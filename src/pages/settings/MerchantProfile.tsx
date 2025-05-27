@@ -63,6 +63,8 @@ import {
   Paperclip,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useCompanyData, type CompanyData, type UpdateCompanyDataParams } from '../../lib/hooks/useCompanyData';
+import { useAuth } from '../../lib/auth';
 
 interface SubscriptionTier {
   name: string;
@@ -421,6 +423,9 @@ const mockPerformanceMetrics: PerformanceMetric[] = [
 ];
 
 const MerchantProfile = () => {
+  const { user } = useAuth();
+  const { companyData, loading, error, updateCompanyData } = useCompanyData();
+  
   const [activeTab, setActiveTab] = useState('info');
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [isYearly, setIsYearly] = useState(false);
@@ -433,6 +438,7 @@ const MerchantProfile = () => {
     name: '',
   });
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isAddPersonModalOpen, setIsAddPersonModalOpen] = useState(false);
   const [isAddCertificationModalOpen, setIsAddCertificationModalOpen] = useState(false);
   const [newCertification, setNewCertification] = useState<Partial<Certification>>({
@@ -457,18 +463,20 @@ const MerchantProfile = () => {
   const [keyPersonnel, setKeyPersonnel] = useState<KeyPerson[]>(mockKeyPersonnel);
   const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetric[]>(mockPerformanceMetrics);
 
+  // Dynamic form data based on company data from database
   const [formData, setFormData] = useState({
-    companyName: 'Acme Gas Supplies Ltd.',
+    companyName: '',
+    tradeName: '',
     logo: '',
-    description: 'Leading provider of industrial and residential gas solutions with over 15 years of experience in the Saudi market. We specialize in high-quality gas products, innovative delivery systems, and exceptional customer service.',
-    phone: '+966-123-456-789',
-    email: 'info@acmegas.com',
-    website: 'www.acmegas.com',
-    address: '123 Industrial Park, Business District, Riyadh',
-    city: 'Riyadh',
-    country: 'Saudi Arabia',
-    foundedYear: '2009',
-    teamSize: '120',
+    description: '',
+    phone: '',
+    email: '',
+    website: '',
+    address: '',
+    city: '',
+    country: '',
+    foundedYear: '',
+    teamSize: '',
     certifications: mockCertifications,
     keyPersonnel: mockKeyPersonnel,
     complianceHistory: [
@@ -485,6 +493,27 @@ const MerchantProfile = () => {
       { name: 'Supply Chain Disruption', description: 'Alternative sourcing protocol for major supply interruptions' },
     ],
   });
+
+  // Update form data when company data is loaded
+  useEffect(() => {
+    if (companyData) {
+      setFormData(prev => ({
+        ...prev,
+        companyName: companyData.legal_name || '',
+        tradeName: companyData.trade_name || '',
+        logo: companyData.logo_url || '',
+        description: companyData.description || '',
+        phone: companyData.phone || companyData.user_phone || '',
+        email: companyData.email || companyData.user_email || '',
+        website: companyData.website || '',
+        address: companyData.address || '',
+        city: companyData.city || '',
+        country: companyData.country || '',
+        foundedYear: companyData.founded_year || '',
+        teamSize: companyData.team_size || '',
+      }));
+    }
+  }, [companyData]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -508,11 +537,35 @@ const MerchantProfile = () => {
     }
   };
 
-  const handleSaveChanges = () => {
-    console.log('Saving changes:', formData);
-    setIsEditMode(false);
-    // In a real app, this would save to the backend
-    alert('Changes saved successfully!');
+  const handleSaveChanges = async () => {
+    if (!companyData) return;
+    
+    setIsSaving(true);
+    try {
+      const updates: UpdateCompanyDataParams = {
+        legal_name: formData.companyName,
+        trade_name: formData.tradeName || undefined,
+        email: formData.email,
+        phone: formData.phone,
+        website: formData.website || undefined,
+        address: formData.address || undefined,
+        city: formData.city || undefined,
+        country: formData.country || undefined,
+        description: formData.description || undefined,
+        founded_year: formData.foundedYear || undefined,
+        team_size: formData.teamSize || undefined,
+        logo_url: formData.logo || undefined,
+      };
+
+      await updateCompanyData(updates);
+      setIsEditMode(false);
+      alert('Changes saved successfully!');
+    } catch (err) {
+      console.error('Error saving changes:', err);
+      alert('Failed to save changes. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSelectPlan = (planName: string) => {
@@ -728,6 +781,20 @@ const MerchantProfile = () => {
               />
             ) : (
               <h2 className="text-2xl font-bold text-gray-900 mb-2">{formData.companyName}</h2>
+            )}
+            {/* Trade Name Field */}
+            {isEditMode && (
+              <input
+                type="text"
+                name="tradeName"
+                value={formData.tradeName}
+                onChange={handleInputChange}
+                placeholder="Enter Trade Name (optional)"
+                className="text-lg text-gray-600 mb-2 w-full border-b border-gray-300 focus:border-primary-500 outline-none px-2 py-1"
+              />
+            )}
+            {!isEditMode && formData.tradeName && (
+              <p className="text-lg text-gray-600 mb-2">Trading as: {formData.tradeName}</p>
             )}
             <div className="flex items-center space-x-4 text-gray-500">
               <div className="flex items-center space-x-2">
@@ -1827,37 +1894,72 @@ const MerchantProfile = () => {
         <h1 className="text-3xl font-bold">Merchant Profile</h1>
         <button
           onClick={handleSaveChanges}
-          className="btn-primary flex items-center space-x-2"
+          disabled={isSaving || loading}
+          className="btn-primary flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Save className="h-5 w-5" />
-          <span>Save Changes</span>
+          {isSaving ? (
+            <RefreshCw className="h-5 w-5 animate-spin" />
+          ) : (
+            <Save className="h-5 w-5" />
+          )}
+          <span>{isSaving ? 'Saving...' : 'Save Changes'}</span>
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm mb-8">
-        <div className="flex border-b">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center space-x-2 px-6 py-4 ${
-                activeTab === tab.id
-                  ? 'border-b-2 border-primary-500 text-primary-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {tab.icon}
-              <span>{tab.label}</span>
-            </button>
-          ))}
+      {/* Loading State */}
+      {loading && (
+        <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-primary-600" />
+          <p className="text-gray-600">Loading company data...</p>
         </div>
-      </div>
+      )}
 
-      {activeTab === 'info' && renderCompanyInfo()}
-      {activeTab === 'subscription' && renderSubscriptionPlans()}
-      {activeTab === 'certifications' && renderCertifications()}
-      {activeTab === 'performance' && renderPerformance()}
-      {activeTab === 'compliance' && renderCompliance()}
+      {/* Error State */}
+      {error && !loading && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 mb-8">
+          <div className="flex items-center">
+            <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
+            <h3 className="text-red-800 font-medium">Error Loading Data</h3>
+          </div>
+          <p className="text-red-700 mt-2">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Main Content */}
+      {!loading && !error && (
+        <>
+          <div className="bg-white rounded-xl shadow-sm mb-8">
+            <div className="flex border-b">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center space-x-2 px-6 py-4 ${
+                    activeTab === tab.id
+                      ? 'border-b-2 border-primary-500 text-primary-600'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {activeTab === 'info' && renderCompanyInfo()}
+          {activeTab === 'subscription' && renderSubscriptionPlans()}
+          {activeTab === 'certifications' && renderCertifications()}
+          {activeTab === 'performance' && renderPerformance()}
+          {activeTab === 'compliance' && renderCompliance()}
+        </>
+      )}
     </div>
   );
 };
