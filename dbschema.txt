@@ -1,0 +1,1022 @@
+1. alerts
+SQL Query
+
+
+
+CREATE TABLE public.alerts (
+  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
+  organization_id uuid NOT NULL,
+  asset_id uuid NULL,
+  type text NOT NULL,
+  severity text NOT NULL,
+  message text NOT NULL,
+  status text NOT NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT alerts_pkey PRIMARY KEY (id),
+  CONSTRAINT alerts_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id),
+  CONSTRAINT alerts_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES organizations(id)
+);
+
+2. asset_maintenance
+SQL Query
+
+
+
+CREATE TABLE public.asset_maintenance (
+  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
+  asset_id uuid NOT NULL,
+  maintenance_type text NOT NULL,
+  scheduled_date timestamp with time zone NOT NULL,
+  completed_date timestamp with time zone NULL,
+  status text NOT NULL,
+  notes text NULL,
+  performed_by uuid NULL,
+  cost numeric NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT asset_maintenance_pkey PRIMARY KEY (id),
+  CONSTRAINT asset_maintenance_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id),
+  CONSTRAINT asset_maintenance_performed_by_fkey FOREIGN KEY (performed_by) REFERENCES org_users(id)
+);
+
+3. asset_sensors
+SQL Query
+
+
+
+CREATE TABLE public.asset_sensors (
+  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
+  asset_id uuid NOT NULL,
+  sensor_type text NOT NULL,
+  name text NOT NULL,
+  status text NOT NULL,
+  last_reading numeric NULL,
+  unit text NULL,
+  reading_timestamp timestamp with time zone NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT asset_sensors_pkey PRIMARY KEY (id),
+  CONSTRAINT asset_sensors_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id)
+);
+
+4. asset_types
+SQL Query
+
+
+
+CREATE TABLE public.asset_types (
+  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
+  name text NOT NULL,
+  category text NOT NULL,
+  description text NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT asset_types_pkey PRIMARY KEY (id)
+);
+
+5. assets
+SQL Query
+
+
+
+CREATE TABLE public.assets (
+  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
+  organization_id uuid NOT NULL,
+  type_id uuid NOT NULL,
+  name text NOT NULL,
+  status text NOT NULL,
+  location_id uuid NULL,
+  manufacturer text NULL,
+  model text NULL,
+  serial_number text NULL,
+  installation_date date NULL,
+  warranty_expiry date NULL,
+  specifications jsonb NULL,
+  health_score integer NULL,
+  utilization_rate integer NULL,
+  power_rating numeric NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT assets_pkey PRIMARY KEY (id),
+  CONSTRAINT assets_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES organizations(id),
+  CONSTRAINT assets_type_id_fkey FOREIGN KEY (type_id) REFERENCES asset_types(id)
+);
+
+6. campaigns
+SQL Query
+
+
+
+CREATE TABLE public.campaigns (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  name text NOT NULL,
+  type text NOT NULL,
+  status text NOT NULL DEFAULT 'draft'::text,
+  start_date timestamp with time zone NULL,
+  end_date timestamp with time zone NULL,
+  discount_type text NOT NULL,
+  discount_value numeric NOT NULL,
+  target_type text NOT NULL,
+  target_value text NULL,
+  description text NULL,
+  terms text NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT campaigns_pkey PRIMARY KEY (id)
+);
+
+7. companies
+SQL Query
+
+
+
+CREATE TABLE public.companies (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  legal_name text NOT NULL,
+  trade_name text NULL,
+  logo_url text NULL,
+  vat text NULL,
+  cr_number text NULL,
+  sector text NULL,
+  onboarding_step smallint NULL DEFAULT 0,
+  onboarding_complete boolean NULL DEFAULT false,
+  created_by uuid NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT companies_pkey PRIMARY KEY (id),
+  CONSTRAINT companies_user_id_fkey FOREIGN KEY (user_id) REFERENCES profiles(id)
+);
+
+8. company_documents
+SQL Query
+
+
+
+CREATE TABLE public.company_documents (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NULL,
+  document_type text NOT NULL,
+  file_name text NOT NULL,
+  file_url text NOT NULL,
+  uploaded_at timestamp with time zone NULL DEFAULT now(),
+  status text NULL DEFAULT 'pending'::text,
+  verified_at timestamp with time zone NULL,
+  metadata jsonb NULL DEFAULT '{}'::jsonb,
+  CONSTRAINT company_documents_pkey PRIMARY KEY (id)
+);
+
+9. company_members
+SQL Query
+
+
+
+CREATE TABLE public.company_members (
+  company_id uuid NOT NULL,
+  profile_id uuid NOT NULL,
+  role text NULL DEFAULT 'staff'::text,
+  status text NULL DEFAULT 'active'::text,
+  CONSTRAINT company_members_pkey PRIMARY KEY (company_id, profile_id),
+  CONSTRAINT company_members_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+  CONSTRAINT company_members_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
+  CONSTRAINT company_members_role_check CHECK ((role = ANY (ARRAY['owner'::text, 'admin'::text, 'staff'::text]))),
+  CONSTRAINT company_members_status_check CHECK ((status = ANY (ARRAY['active'::text, 'pending'::text])))
+);
+
+10. customers
+SQL Query
+
+
+
+CREATE TABLE public.customers (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  type text NOT NULL,
+  email text NULL,
+  phone text NULL,
+  company text NULL,
+  address text NULL,
+  city text NULL,
+  country text NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT customers_pkey PRIMARY KEY (id)
+);
+
+11. delivery_drivers
+SQL Query
+
+
+
+CREATE TABLE public.delivery_drivers (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  name text NOT NULL,
+  license_number text NULL,
+  phone text NULL,
+  status text NULL DEFAULT 'available'::text,
+  vehicle_id uuid NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT delivery_drivers_pkey PRIMARY KEY (id),
+  CONSTRAINT delivery_drivers_vehicle_id_fkey FOREIGN KEY (vehicle_id) REFERENCES delivery_vehicles(id)
+);
+
+12. delivery_vehicles
+SQL Query
+
+
+
+CREATE TABLE public.delivery_vehicles (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  number text NOT NULL,
+  type text NOT NULL,
+  capacity numeric NULL,
+  fuel_type text NULL,
+  status text NULL DEFAULT 'active'::text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT delivery_vehicles_pkey PRIMARY KEY (id)
+);
+
+13. delivery_zones
+SQL Query
+
+
+
+CREATE TABLE public.delivery_zones (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  name text NOT NULL,
+  base_fee numeric NOT NULL DEFAULT 0,
+  min_order_value numeric NOT NULL DEFAULT 0,
+  estimated_time text NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT delivery_zones_pkey PRIMARY KEY (id)
+);
+
+14. eaas_carbon_reports
+SQL Query
+
+
+
+CREATE TABLE public.eaas_carbon_reports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  subscription_id uuid NOT NULL,
+  report_period_start date NOT NULL,
+  report_period_end date NOT NULL,
+  energy_produced_kwh numeric NOT NULL,
+  carbon_saved_tons numeric NOT NULL,
+  carbon_credits_earned numeric NULL DEFAULT 0,
+  carbon_credits_shared numeric NULL DEFAULT 0,
+  certificate_url text NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT eaas_carbon_reports_pkey PRIMARY KEY (id),
+  CONSTRAINT eaas_carbon_reports_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES eaas_subscriptions(id)
+);
+
+15. eaas_contracts
+SQL Query
+
+
+
+CREATE TABLE public.eaas_contracts (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  request_id uuid NULL,
+  contract_number text NOT NULL,
+  title text NOT NULL,
+  supplier_id text NOT NULL,
+  supplier_name text NOT NULL,
+  start_date date NOT NULL,
+  end_date date NOT NULL,
+  term_years integer NOT NULL,
+  monthly_fee numeric NOT NULL,
+  annual_escalation_rate numeric NULL DEFAULT 0,
+  early_termination_fee_formula text NULL,
+  relocation_fee numeric NULL,
+  sla_uptime_guarantee numeric NULL DEFAULT 95,
+  ownership_terms text NULL DEFAULT 'supplier'::text,
+  renewal_policy text NULL,
+  legal_jurisdiction text NULL,
+  contract_url text NULL,
+  status text NULL DEFAULT 'draft'::text,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT eaas_contracts_pkey PRIMARY KEY (id),
+  CONSTRAINT eaas_contracts_request_id_fkey FOREIGN KEY (request_id) REFERENCES eaas_requests(id)
+);
+
+16. eaas_delivery_verifications
+SQL Query
+
+
+
+CREATE TABLE public.eaas_delivery_verifications (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  subscription_id uuid NOT NULL,
+  verification_date date NOT NULL,
+  verified_by uuid NOT NULL,
+  verification_method text NOT NULL,
+  verification_notes text NULL,
+  photo_evidence_url text NULL,
+  signature_url text NULL,
+  status text NULL DEFAULT 'verified'::text,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT eaas_delivery_verifications_pkey PRIMARY KEY (id),
+  CONSTRAINT eaas_delivery_verifications_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES eaas_subscriptions(id)
+);
+
+17. eaas_equipment
+SQL Query
+
+
+
+CREATE TABLE public.eaas_equipment (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  subscription_id uuid NOT NULL,
+  equipment_type text NOT NULL,
+  manufacturer text NOT NULL,
+  model text NOT NULL,
+  serial_number text NOT NULL,
+  capacity numeric NOT NULL,
+  installation_date date NOT NULL,
+  warranty_end_date date NULL,
+  last_maintenance_date date NULL,
+  next_maintenance_date date NULL,
+  status text NULL DEFAULT 'active'::text,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  monitoring_system_id text NULL,
+  monitoring_url text NULL,
+  maintenance_frequency_months integer NULL DEFAULT 6,
+  CONSTRAINT eaas_equipment_pkey PRIMARY KEY (id),
+  CONSTRAINT eaas_equipment_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES eaas_subscriptions(id)
+);
+
+18. eaas_invoices
+SQL Query
+
+
+
+CREATE TABLE public.eaas_invoices (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  subscription_id uuid NOT NULL,
+  invoice_number text NOT NULL,
+  invoice_date date NOT NULL,
+  due_date date NOT NULL,
+  base_amount numeric NOT NULL,
+  overuse_amount numeric NULL DEFAULT 0,
+  additional_fees numeric NULL DEFAULT 0,
+  additional_fees_description text NULL,
+  total_amount numeric NOT NULL,
+  status text NULL DEFAULT 'pending'::text,
+  payment_date date NULL,
+  payment_reference text NULL,
+  invoice_url text NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT eaas_invoices_pkey PRIMARY KEY (id),
+  CONSTRAINT eaas_invoices_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES eaas_subscriptions(id)
+);
+
+19. eaas_requests
+SQL Query
+
+
+
+CREATE TABLE public.eaas_requests (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  project_name text NOT NULL,
+  site_location text NOT NULL,
+  site_coordinates point NULL,
+  energy_type text NOT NULL,
+  subscription_term integer NOT NULL,
+  expected_load numeric NOT NULL,
+  feasibility_report_url text NULL,
+  go_live_date date NULL,
+  status text NULL DEFAULT 'draft'::text,
+  notes text NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT eaas_requests_pkey PRIMARY KEY (id)
+);
+
+20. eaas_service_messages
+SQL Query
+
+
+
+CREATE TABLE public.eaas_service_messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  service_request_id uuid NOT NULL,
+  sender_id uuid NOT NULL,
+  sender_type text NOT NULL,
+  message text NOT NULL,
+  attachment_url text NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT eaas_service_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT eaas_service_messages_service_request_id_fkey FOREIGN KEY (service_request_id) REFERENCES eaas_service_requests(id)
+);
+
+21. eaas_service_requests
+SQL Query
+
+
+
+CREATE TABLE public.eaas_service_requests (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  subscription_id uuid NOT NULL,
+  request_type text NOT NULL,
+  priority text NOT NULL,
+  description text NOT NULL,
+  status text NULL DEFAULT 'open'::text,
+  requested_date timestamp with time zone NULL DEFAULT now(),
+  scheduled_date timestamp with time zone NULL,
+  completed_date timestamp with time zone NULL,
+  technician_notes text NULL,
+  customer_notes text NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT eaas_service_requests_pkey PRIMARY KEY (id),
+  CONSTRAINT eaas_service_requests_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES eaas_subscriptions(id)
+);
+
+22. eaas_sla_reports
+SQL Query
+
+
+
+CREATE TABLE public.eaas_sla_reports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  subscription_id uuid NOT NULL,
+  report_period_start date NOT NULL,
+  report_period_end date NOT NULL,
+  uptime_percentage numeric NOT NULL,
+  downtime_minutes numeric NULL DEFAULT 0,
+  planned_maintenance_minutes numeric NULL DEFAULT 0,
+  unplanned_outages integer NULL DEFAULT 0,
+  ticket_count integer NULL DEFAULT 0,
+  avg_response_time_minutes numeric NULL,
+  sla_met boolean NULL DEFAULT true,
+  report_url text NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT eaas_sla_reports_pkey PRIMARY KEY (id),
+  CONSTRAINT eaas_sla_reports_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES eaas_subscriptions(id)
+);
+
+23. eaas_subscriptions
+SQL Query
+
+
+
+CREATE TABLE public.eaas_subscriptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  contract_id uuid NOT NULL,
+  site_name text NOT NULL,
+  site_location text NOT NULL,
+  site_coordinates point NULL,
+  energy_type text NOT NULL,
+  capacity numeric NOT NULL,
+  cod_date date NULL,
+  current_status text NULL DEFAULT 'pending'::text,
+  current_uptime numeric NULL DEFAULT 0,
+  monthly_fee numeric NOT NULL,
+  next_invoice_date date NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  last_maintenance_date date NULL,
+  next_maintenance_date date NULL,
+  maintenance_notes text NULL,
+  CONSTRAINT eaas_subscriptions_pkey PRIMARY KEY (id),
+  CONSTRAINT eaas_subscriptions_contract_id_fkey FOREIGN KEY (contract_id) REFERENCES eaas_contracts(id)
+);
+
+24. energy_consumption
+SQL Query
+
+
+
+CREATE TABLE public.energy_consumption (
+  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
+  organization_id uuid NOT NULL,
+  asset_id uuid NULL,
+  location_id uuid NULL,
+  consumption_type text NOT NULL,
+  amount numeric NOT NULL,
+  unit text NOT NULL,
+  start_time timestamp with time zone NOT NULL,
+  end_time timestamp with time zone NOT NULL,
+  cost numeric NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT energy_consumption_pkey PRIMARY KEY (id),
+  CONSTRAINT energy_consumption_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES assets(id),
+  CONSTRAINT energy_consumption_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES organizations(id)
+);
+
+25. energy_sources
+SQL Query
+
+
+
+CREATE TABLE public.energy_sources (
+  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
+  organization_id uuid NOT NULL,
+  name text NOT NULL,
+  type text NOT NULL,
+  renewable boolean NULL DEFAULT false,
+  capacity numeric NULL,
+  unit text NULL,
+  cost_per_unit numeric NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT energy_sources_pkey PRIMARY KEY (id),
+  CONSTRAINT energy_sources_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES organizations(id)
+);
+
+26. invoices
+SQL Query
+
+
+
+CREATE TABLE public.invoices (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  invoice_number text NOT NULL,
+  company_id uuid NOT NULL,
+  customer_id uuid NOT NULL,
+  order_id uuid NULL,
+  amount numeric NOT NULL,
+  status text NOT NULL DEFAULT 'pending'::text,
+  due_date timestamp with time zone NOT NULL,
+  issued_date timestamp with time zone NOT NULL DEFAULT now(),
+  paid_date timestamp with time zone NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT invoices_pkey PRIMARY KEY (id),
+  CONSTRAINT invoices_invoice_number_key UNIQUE (invoice_number),
+  CONSTRAINT invoices_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES customers(id),
+  CONSTRAINT invoices_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders(id)
+);
+
+27. locations
+SQL Query
+
+
+
+CREATE TABLE public.locations (
+  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
+  organization_id uuid NOT NULL,
+  name text NOT NULL,
+  type text NOT NULL,
+  address text NULL,
+  city text NULL,
+  country text NULL,
+  coordinates point NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT locations_pkey PRIMARY KEY (id),
+  CONSTRAINT locations_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES organizations(id)
+);
+
+28. order_items
+SQL Query
+
+
+
+CREATE TABLE public.order_items (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  quantity integer NOT NULL,
+  unit_price numeric NOT NULL,
+  total_price numeric NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT order_items_pkey PRIMARY KEY (id),
+  CONSTRAINT order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders(id),
+  CONSTRAINT order_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+29. orders
+SQL Query
+
+
+
+CREATE TABLE public.orders (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  order_number text NOT NULL,
+  company_id uuid NOT NULL,
+  customer_id uuid NOT NULL,
+  status text NOT NULL DEFAULT 'pending'::text,
+  total_amount numeric NOT NULL,
+  payment_status text NOT NULL DEFAULT 'pending'::text,
+  payment_method text NULL,
+  payment_transaction_id text NULL,
+  delivery_method text NOT NULL,
+  delivery_status text NOT NULL DEFAULT 'pending'::text,
+  delivery_address text NULL,
+  delivery_city text NULL,
+  delivery_country text NULL,
+  delivery_notes text NULL,
+  delivery_tracking text NULL,
+  delivery_carrier text NULL,
+  priority text NULL DEFAULT 'medium'::text,
+  notes text NULL,
+  tags text[] NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT orders_pkey PRIMARY KEY (id),
+  CONSTRAINT orders_order_number_key UNIQUE (order_number),
+  CONSTRAINT orders_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+30. org_users
+SQL Query
+
+
+
+CREATE TABLE public.org_users (
+  id uuid NOT NULL,
+  organization_id uuid NULL,
+  full_name text NULL,
+  role text NULL,
+  department text NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT org_users_pkey PRIMARY KEY (id),
+  CONSTRAINT org_users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
+  CONSTRAINT org_users_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES organizations(id)
+);
+
+31. organizations
+SQL Query
+
+
+
+CREATE TABLE public.organizations (
+  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
+  name text NOT NULL,
+  industry text NULL,
+  size text NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT organizations_pkey PRIMARY KEY (id)
+);
+
+32. product_attributes
+SQL Query
+
+
+
+CREATE TABLE public.product_attributes (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  product_id uuid NOT NULL,
+  attribute_type text NOT NULL,
+  name text NOT NULL,
+  value text NOT NULL,
+  unit text NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT product_attributes_pkey PRIMARY KEY (id),
+  CONSTRAINT product_attributes_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+33. product_images
+SQL Query
+
+
+
+CREATE TABLE public.product_images (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  product_id uuid NOT NULL,
+  url text NOT NULL,
+  is_primary boolean NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT product_images_pkey PRIMARY KEY (id),
+  CONSTRAINT product_images_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+34. product_pricing
+SQL Query
+
+
+
+CREATE TABLE public.product_pricing (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  product_id uuid NOT NULL,
+  zone_id uuid NULL,
+  base_price numeric NOT NULL,
+  b2b_price numeric NOT NULL,
+  b2c_price numeric NOT NULL,
+  currency text NULL DEFAULT 'SAR'::text,
+  min_order_quantity integer NULL DEFAULT 1,
+  vat_included boolean NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT product_pricing_pkey PRIMARY KEY (id),
+  CONSTRAINT product_pricing_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id),
+  CONSTRAINT product_pricing_zone_id_fkey FOREIGN KEY (zone_id) REFERENCES delivery_zones(id)
+);
+
+35. products
+SQL Query
+
+
+
+CREATE TABLE public.products (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  name text NOT NULL,
+  sku text NULL,
+  description text NULL,
+  type text NULL,
+  category text NULL,
+  brand text NULL,
+  model text NULL,
+  status text NOT NULL DEFAULT 'draft'::text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT products_pkey PRIMARY KEY (id),
+  CONSTRAINT products_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+36. profiles
+SQL Query
+
+
+
+CREATE TABLE public.profiles (
+  id uuid NOT NULL,
+  full_name text NOT NULL,
+  phone text NULL,
+  avatar_url text NULL,
+  locale text NULL DEFAULT 'en'::text,
+  last_seen_at timestamp with time zone NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT profiles_pkey PRIMARY KEY (id),
+  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+37. projects
+SQL Query
+
+
+
+CREATE TABLE public.projects (
+  id uuid NOT NULL DEFAULT extensions.uuid_generate_v4(),
+  organization_id uuid NOT NULL,
+  name text NOT NULL,
+  description text NULL,
+  status text NOT NULL,
+  start_date date NULL,
+  end_date date NULL,
+  budget numeric NULL,
+  manager_id uuid NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT projects_pkey PRIMARY KEY (id),
+  CONSTRAINT projects_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES org_users(id),
+  CONSTRAINT projects_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES organizations(id)
+);
+
+38. spatial_ref_sys
+SQL Query
+
+
+
+CREATE TABLE public.spatial_ref_sys (
+  srid integer NOT NULL,
+  auth_name character varying(256) NULL,
+  auth_srid integer NULL,
+  srtext character varying(2048) NULL,
+  proj4text character varying(2048) NULL,
+  CONSTRAINT spatial_ref_sys_pkey PRIMARY KEY (srid),
+  CONSTRAINT spatial_ref_sys_srid_check CHECK (((srid > 0) AND (srid <= 998999)))
+);
+
+39. stores
+SQL Query
+
+
+
+CREATE TABLE public.stores (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  name text NOT NULL,
+  type text NOT NULL,
+  address text NULL,
+  city text NULL,
+  country text NULL,
+  location geography NULL,
+  status text NOT NULL DEFAULT 'pending'::text,
+  services jsonb NULL DEFAULT '{"pickup": false, "delivery": false}'::jsonb,
+  working_hours jsonb NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT stores_pkey PRIMARY KEY (id),
+  CONSTRAINT stores_company_id_fkey FOREIGN KEY (company_id) REFERENCES companies(id)
+);
+
+40. subscription_addons
+SQL Query
+
+
+
+CREATE TABLE public.subscription_addons (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  subscription_id uuid NOT NULL,
+  addon_type text NOT NULL,
+  quantity integer NOT NULL DEFAULT 1,
+  unit_price numeric NOT NULL,
+  start_date timestamp with time zone NOT NULL DEFAULT now(),
+  end_date timestamp with time zone NULL,
+  status text NOT NULL DEFAULT 'active'::text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT subscription_addons_pkey PRIMARY KEY (id),
+  CONSTRAINT subscription_addons_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES supplier_subscriptions(id)
+);
+
+41. subscription_invoices
+SQL Query
+
+
+
+CREATE TABLE public.subscription_invoices (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  subscription_id uuid NOT NULL,
+  invoice_number text NOT NULL,
+  amount numeric NOT NULL,
+  status text NOT NULL DEFAULT 'pending'::text,
+  billing_period_start timestamp with time zone NOT NULL,
+  billing_period_end timestamp with time zone NOT NULL,
+  due_date timestamp with time zone NOT NULL,
+  paid_date timestamp with time zone NULL,
+  payment_method text NULL,
+  payment_transaction_id text NULL,
+  invoice_items jsonb NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT subscription_invoices_pkey PRIMARY KEY (id),
+  CONSTRAINT subscription_invoices_invoice_number_key UNIQUE (invoice_number),
+  CONSTRAINT subscription_invoices_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES supplier_subscriptions(id)
+);
+
+42. subscription_plans
+SQL Query
+
+
+
+CREATE TABLE public.subscription_plans (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  description text NULL,
+  monthly_price numeric NOT NULL,
+  yearly_price numeric NOT NULL,
+  is_active boolean NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT subscription_plans_pkey PRIMARY KEY (id)
+);
+
+43. subscription_tiers
+SQL Query
+
+
+
+CREATE TABLE public.subscription_tiers (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  plan_id uuid NOT NULL,
+  product_limit integer NOT NULL,
+  order_limit integer NOT NULL,
+  gmv_limit numeric NOT NULL,
+  branch_limit integer NOT NULL,
+  user_limit integer NOT NULL,
+  customer_types text[] NOT NULL,
+  countries_access text NOT NULL,
+  commission_rate numeric NOT NULL,
+  support_level text NOT NULL,
+  api_access text NOT NULL,
+  features jsonb NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT subscription_tiers_pkey PRIMARY KEY (id),
+  CONSTRAINT subscription_tiers_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES subscription_plans(id)
+);
+
+44. subscription_usage
+SQL Query
+
+
+
+CREATE TABLE public.subscription_usage (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  products_used integer NOT NULL DEFAULT 0,
+  orders_used integer NOT NULL DEFAULT 0,
+  gmv_used numeric NOT NULL DEFAULT 0,
+  branches_used integer NOT NULL DEFAULT 0,
+  users_used integer NOT NULL DEFAULT 0,
+  month date NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT subscription_usage_pkey PRIMARY KEY (id),
+  CONSTRAINT subscription_usage_company_id_month_key UNIQUE (company_id, month)
+);
+
+45. supplier_subscriptions
+SQL Query
+
+
+
+CREATE TABLE public.supplier_subscriptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL,
+  plan_id uuid NOT NULL,
+  status text NOT NULL DEFAULT 'active'::text,
+  billing_cycle text NOT NULL DEFAULT 'monthly'::text,
+  start_date timestamp with time zone NOT NULL DEFAULT now(),
+  end_date timestamp with time zone NULL,
+  auto_renew boolean NULL DEFAULT true,
+  payment_method text NULL,
+  payment_details jsonb NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT supplier_subscriptions_pkey PRIMARY KEY (id),
+  CONSTRAINT supplier_subscriptions_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES subscription_plans(id)
+);
+
+46. support_tickets
+SQL Query
+
+
+
+CREATE TABLE public.support_tickets (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  ticket_number text NOT NULL,
+  company_id uuid NOT NULL,
+  customer_id uuid NOT NULL,
+  title text NOT NULL,
+  description text NOT NULL,
+  status text NOT NULL DEFAULT 'open'::text,
+  priority text NOT NULL DEFAULT 'medium'::text,
+  category text NOT NULL,
+  assignee_id uuid NULL,
+  response_time integer NULL,
+  resolution_time integer NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  resolved_at timestamp with time zone NULL,
+  CONSTRAINT support_tickets_pkey PRIMARY KEY (id),
+  CONSTRAINT support_tickets_ticket_number_key UNIQUE (ticket_number),
+  CONSTRAINT support_tickets_assignee_id_fkey FOREIGN KEY (assignee_id) REFERENCES users(id),
+  CONSTRAINT support_tickets_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+47. ticket_messages
+SQL Query
+
+
+
+CREATE TABLE public.ticket_messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  ticket_id uuid NOT NULL,
+  sender_id uuid NULL,
+  sender_type text NOT NULL,
+  message text NOT NULL,
+  attachments text[] NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ticket_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT ticket_messages_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES users(id),
+  CONSTRAINT ticket_messages_ticket_id_fkey FOREIGN KEY (ticket_id) REFERENCES support_tickets(id)
+);
+
+48. users
+
+CREATE TABLE public.users (
+  id uuid NOT NULL,
+  email text NOT NULL,
+  full_name text NULL,
+  avatar_url text NULL,
+  role text NOT NULL DEFAULT 'supplier'::text,
+  status text NOT NULL DEFAULT 'active'::text,
+  company_id uuid NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_id uuid NULL DEFAULT auth.uid(),
+  CONSTRAINT users_pkey PRIMARY KEY (id),
+  CONSTRAINT users_email_key UNIQUE (email),
+  CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
+  CONSTRAINT users_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);

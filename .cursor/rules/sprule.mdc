@@ -1,0 +1,88 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+(repo root must match /hrunx\/Gasable/ )
+
+╭─►  A.  STACK & TOOLCHAIN (immutable)  
+│    • Front-end: Vite + React 18 + TypeScript strict  
+│    • Styling: Tailwind 3 + shadcn/ui components  
+│    • Back-end: Netlify Functions (Node18)  → Supabase Postgres  
+│    • Auth: Gmail-OAuth2 6-digit OTP (no passwords)  
+│    • PM: **npm** only (lockfile = package-lock.json)  
+│    • Tests: vitest (unit), Playwright (e2e), ESLint for static checks  
+│
+╭─►  B.  REPO ENTRY SCRIPTS  
+│    • `npm run dev`  → Vite (5173) + Netlify Functions (8888)  
+│    • `npm run lint:fix` → ESLint w/ unused-imports plugin + icon patcher  
+│    • `npm run ship` → lint → typecheck → test → `netlify deploy --prod`  
+│    • NEVER run `npm run ship` unless user specifically asks for it.  
+│
+╭─►  C.  MODULE ROADMAP (deliver in this sequence unless user overrides)  
+│    1. **Auth & Profile** (OTP flow complete)  
+│    2. **Store Wizard** (companies, stores, docs upload)  
+│    3. **Fleet** (assets, sensors, maintenance)  
+│    4. **Orders Dashboard** (orders, invoices, real-time channel)  
+│    5. **EAAS & Carbon** (optional, later)  
+│
+╭─►  D.  DATABASE & RLS SAFETY  
+│    • Source of truth = `supabase/migrations/*.sql`  
+│    • Any new schema change → create timestamped migration file + `supabase gen types` (only when user asks).  
+│    • Every table that has `company_id` **MUST** carry RLS policy  
+│      ```sql
+│      company_id = auth.uid()
+│      ```  
+│      for **select, insert, update, delete**.  
+│    • Never touch or rename existing columns without confirmation.  
+│
+╭─►  E.  OTP CONTRACT (do not mutate without approval)  
+│    • Function path: `.netlify/functions/send-otp.js`  
+│    • Columns (users table): `verification_code`, `verification_expires_at`, `email_verified bool`  
+│    • Code expires after 15 min; resend logic throttled (max 3 / hour).  
+│
+╭─►  F.  ENV & SECRETS  
+│    • All secrets already stored in Netlify dashboard:  
+│      `CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, REDIRECT_URI, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY`  
+│    • **Never** read, write, or export `.env`.  
+│    • If a new secret is needed, list it under “Secrets to add” only.  
+│
+╭─►  G.  PERFORMANCE GUARDRAILS  
+│    • React components ≥ 150 LOC must be lazy-loaded with `React.lazy`.  
+│    • If bundle size ↑ > 10 kB (gzip) in one commit, output a “⚠️ SIZE BUMP” notice.  
+│
+╭─►  H.  ICON & LINT AUTOFIX  
+│    • Invalid `lucide-react` imports → auto-replace with `Circle` during `lint:fix`.  
+│    • Run `npm run lint:fix` automatically after every file edit block.  
+│
+╭─►  I.  COMMIT / PR STYLE  
+│    • Conventional Commits + scope, e.g. `feat(store): wizard step 2 – address geo`  
+│    • Append a short “### Changelog” section to PR description summarising change.  
+│
+╭─►  J.  DEPLOY PIPELINE AWARENESS  
+│    • `netlify link --id …` already configured; never create a new site.  
+│    • `ship` script drives production build + deploy; staging previews handled by Netlify automatically on PRs (no manual preview deploys).  
+│
+╭─►  K.  FAILURE PROTOCOL  
+│    • If local dev fails (`npm run dev`), auto-run lint + typecheck; present the top 5 blocking errors with quick-fix PR.  
+│    • If database migration fails, rollback and surface SQL + Supabase error.  
+│
+╭─►  L.  DOCS & ONBOARDING  
+│    • For every new module or major refactor, update `/docs/ARCHITECTURE.md` with  
+│      – purpose,  
+│      – data flow,  
+│      – key env vars,  
+│      – diagram link (generated via Mermaid).  
+│
+╭─►  M.  PROHIBITIONS  
+│    • No Tailwind or PostCSS major-version bumps without migration plan.  
+│    • No Docker, pnpm, Yarn, or monorepo conversion.  
+│    • No direct writes to Supabase storage buckets from client code—use signed URLs.  
+│
+╰─►  N.  EXIT CRITERIA FOR EACH TASK  
+     • green `npm run lint`  
+     • green `npm run test`  
+     • `npm run dev` boots with no TypeScript red  
+     • blueprint cache updated  
+     • status line: “✅ Ready for review”  
