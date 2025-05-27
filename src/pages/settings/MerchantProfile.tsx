@@ -64,6 +64,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useCompanyData, type CompanyData, type UpdateCompanyDataParams } from '../../lib/hooks/useCompanyData';
+import { useCompanyEmployees, type CompanyMember, type NewMember, type Role } from '../../lib/hooks/useCompanyEmployees';
 import { useAuth } from '../../lib/auth';
 
 interface SubscriptionTier {
@@ -425,6 +426,17 @@ const mockPerformanceMetrics: PerformanceMetric[] = [
 const MerchantProfile = () => {
   const { user } = useAuth();
   const { companyData, loading, error, updateCompanyData } = useCompanyData();
+  const { 
+    members, 
+    roles, 
+    loading: employeesLoading, 
+    error: employeesError, 
+    addMember, 
+    updateMember, 
+    deleteMember,
+    hasPermission,
+    getRoleByName 
+  } = useCompanyEmployees();
   
   const [activeTab, setActiveTab] = useState('info');
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
@@ -440,6 +452,8 @@ const MerchantProfile = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isAddPersonModalOpen, setIsAddPersonModalOpen] = useState(false);
+  const [isEditPersonModalOpen, setIsEditPersonModalOpen] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<CompanyMember | null>(null);
   const [isAddCertificationModalOpen, setIsAddCertificationModalOpen] = useState(false);
   const [newCertification, setNewCertification] = useState<Partial<Certification>>({
     name: '',
@@ -450,17 +464,17 @@ const MerchantProfile = () => {
     status: 'active',
     description: ''
   });
-  const [newKeyPerson, setNewKeyPerson] = useState<Partial<KeyPerson>>({
-    name: '',
-    position: '',
+  const [newEmployee, setNewEmployee] = useState<NewMember>({
+    full_name: '',
+    job_position: '',
     email: '',
     phone: '',
-    image: '',
-    experience: 0,
-    expertise: []
+    profile_image_url: '',
+    years_experience: 0,
+    expertise: [],
+    role_name: 'employee'
   });
   const [certifications, setCertifications] = useState<Certification[]>(mockCertifications);
-  const [keyPersonnel, setKeyPersonnel] = useState<KeyPerson[]>(mockKeyPersonnel);
   const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetric[]>(mockPerformanceMetrics);
 
   // Dynamic form data based on company data from database
@@ -612,42 +626,132 @@ const MerchantProfile = () => {
     });
   };
 
-  const handleAddKeyPerson = () => {
-    if (!newKeyPerson.name || !newKeyPerson.position) {
+  const handleAddKeyPerson = async () => {
+    if (!newEmployee.full_name || !newEmployee.job_position) {
       alert('Please fill in all required fields');
       return;
     }
 
-    const keyPerson: KeyPerson = {
-      id: Date.now().toString(),
-      name: newKeyPerson.name || '',
-      position: newKeyPerson.position || '',
-      email: newKeyPerson.email || '',
-      phone: newKeyPerson.phone || '',
-      image: newKeyPerson.image || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400',
-      experience: newKeyPerson.experience || 0,
-      expertise: newKeyPerson.expertise || [],
-    };
-
-    setKeyPersonnel([...keyPersonnel, keyPerson]);
-    setIsAddPersonModalOpen(false);
-    setNewKeyPerson({
-      name: '',
-      position: '',
-      email: '',
-      phone: '',
-      image: '',
-      experience: 0,
-      expertise: []
-    });
+    try {
+      const result = await addMember(newEmployee);
+      if (result.success) {
+        setIsAddPersonModalOpen(false);
+        setNewEmployee({
+          full_name: '',
+          job_position: '',
+          email: '',
+          phone: '',
+          profile_image_url: '',
+          years_experience: 0,
+          expertise: [],
+          role_name: 'employee'
+        });
+        alert('Employee added successfully!');
+      } else {
+        alert(result.error || 'Failed to add employee');
+      }
+    } catch (err) {
+      console.error('Error adding employee:', err);
+      alert('Failed to add employee. Please try again.');
+    }
   };
 
   const handleRemoveCertification = (id: string) => {
     setCertifications(certifications.filter(cert => cert.id !== id));
   };
 
-  const handleRemoveKeyPerson = (id: string) => {
-    setKeyPersonnel(keyPersonnel.filter(person => person.id !== id));
+  const handleRemoveKeyPerson = async (employeeId: string) => {
+    if (!confirm('Are you sure you want to remove this employee?')) {
+      return;
+    }
+
+    try {
+      const result = await deleteMember(employeeId);
+      if (result.success) {
+        alert('Employee removed successfully!');
+      } else {
+        alert(result.error || 'Failed to remove employee');
+      }
+    } catch (err) {
+      console.error('Error removing employee:', err);
+      alert('Failed to remove employee. Please try again.');
+    }
+  };
+
+  const handleEditEmployee = (employee: CompanyMember) => {
+    setEditingEmployee(employee);
+    setNewEmployee({
+      full_name: employee.full_name,
+      job_position: employee.job_position,
+      email: employee.email || '',
+      phone: employee.phone || '',
+      profile_image_url: employee.profile_image_url || '',
+      years_experience: employee.years_experience || 0,
+      expertise: employee.expertise || [],
+      role_name: employee.role_name || 'employee'
+    });
+    setIsEditPersonModalOpen(true);
+  };
+
+  const handleUpdateEmployee = async () => {
+    if (!editingEmployee || !newEmployee.full_name || !newEmployee.job_position) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      const result = await updateMember(editingEmployee.profile_id, newEmployee);
+      if (result.success) {
+        setIsEditPersonModalOpen(false);
+        setEditingEmployee(null);
+        setNewEmployee({
+          full_name: '',
+          job_position: '',
+          email: '',
+          phone: '',
+          profile_image_url: '',
+          years_experience: 0,
+          expertise: [],
+          role_name: 'employee'
+        });
+        alert('Employee updated successfully!');
+      } else {
+        alert(result.error || 'Failed to update employee');
+      }
+    } catch (err) {
+      console.error('Error updating employee:', err);
+      alert('Failed to update employee');
+    }
+  };
+
+  const handleAddEmployee = async () => {
+    if (!newEmployee.full_name || !newEmployee.job_position) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      const result = await addMember(newEmployee);
+      if (result.success) {
+        setIsAddPersonModalOpen(false);
+        setNewEmployee({
+          full_name: '',
+          job_position: '',
+          email: '',
+          phone: '',
+          profile_image_url: '',
+          years_experience: 0,
+          expertise: [],
+          role_name: 'employee'
+        });
+        alert('Employee added successfully!');
+      } else {
+        alert(result.error || 'Failed to add employee');
+      }
+    } catch (err) {
+      console.error('Error adding employee:', err);
+      alert('Failed to add employee. Please try again.');
+    }
   };
 
   const tabs = [
@@ -944,83 +1048,137 @@ const MerchantProfile = () => {
       <div className="bg-white rounded-xl shadow-sm p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-semibold">Key Personnel</h3>
-          <button
-            onClick={() => setIsAddPersonModalOpen(true)}
-            className="px-4 py-2 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors flex items-center space-x-2"
-          >
-            <Plus className="h-5 w-5" />
-            <span>Add Team Member</span>
-          </button>
+          {hasPermission('employees', 'write') && (
+            <button
+              onClick={() => setIsAddPersonModalOpen(true)}
+              className="px-4 py-2 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors flex items-center space-x-2"
+            >
+              <Plus className="h-5 w-5" />
+              <span>Add Team Member</span>
+            </button>
+          )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {keyPersonnel.map((person) => (
-            <div key={person.id} className="bg-white p-6 rounded-xl border border-secondary-200 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex justify-end mb-2">
-                <button
-                  onClick={() => handleRemoveKeyPerson(person.id)}
-                  className="p-1 text-red-500 hover:bg-red-50 rounded-full"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="flex flex-col items-center text-center mb-4">
-                <img
-                  src={person.image}
-                  alt={person.name}
-                  className="w-24 h-24 rounded-full object-cover mb-3"
-                />
-                <h4 className="text-lg font-semibold">{person.name}</h4>
-                <p className="text-secondary-600">{person.position}</p>
-              </div>
-              <div className="space-y-2 text-sm">
-                {person.email && (
+        
+        {employeesLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <RefreshCw className="h-6 w-6 animate-spin text-primary-600" />
+            <span className="ml-2 text-gray-600">Loading employees...</span>
+          </div>
+        ) : employeesError ? (
+          <div className="text-center py-8">
+            <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+            <p className="text-red-600">Failed to load employees</p>
+            <p className="text-sm text-gray-500">{employeesError}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {members.map((employee) => (
+              <div key={employee.profile_id} className="bg-white p-6 rounded-xl border border-secondary-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex justify-between mb-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    employee.member_status === 'active' ? 'bg-green-100 text-green-800' :
+                    employee.member_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {employee.member_status}
+                  </span>
+                  {hasPermission('employees', 'delete') && (
+                    <div className="flex space-x-1">
+                      <button
+                        onClick={() => handleEditEmployee(employee)}
+                        className="p-1 text-blue-500 hover:bg-blue-50 rounded-full"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleRemoveKeyPerson(employee.profile_id)}
+                        className="p-1 text-red-500 hover:bg-red-50 rounded-full"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col items-center text-center mb-4">
+                  <img
+                    src={employee.profile_image_url || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400'}
+                    alt={employee.full_name}
+                    className="w-24 h-24 rounded-full object-cover mb-3"
+                  />
+                  <h4 className="text-lg font-semibold">{employee.full_name}</h4>
+                  <p className="text-secondary-600">{employee.job_position}</p>
+                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs mt-1">
+                    {getRoleByName(employee.role_name)?.display_name || employee.role_name}
+                  </span>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {employee.email && (
+                    <div className="flex items-center justify-center">
+                      <Mail className="h-4 w-4 text-secondary-400 mr-2" />
+                      <span>{employee.email}</span>
+                    </div>
+                  )}
+                  {employee.phone && (
+                    <div className="flex items-center justify-center">
+                      <Phone className="h-4 w-4 text-secondary-400 mr-2" />
+                      <span>{employee.phone}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-center">
-                    <Mail className="h-4 w-4 text-secondary-400 mr-2" />
-                    <span>{person.email}</span>
+                    <Briefcase className="h-4 w-4 text-secondary-400 mr-2" />
+                    <span>{employee.years_experience} years experience</span>
+                  </div>
+                </div>
+                {employee.expertise && employee.expertise.length > 0 && (
+                  <div className="mt-4">
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {employee.expertise.map((skill, index) => (
+                        <span key={index} className="px-2 py-1 bg-primary-50 text-primary-700 rounded-full text-xs">
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
-                {person.phone && (
-                  <div className="flex items-center justify-center">
-                    <Phone className="h-4 w-4 text-secondary-400 mr-2" />
-                    <span>{person.phone}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-center">
-                  <Briefcase className="h-4 w-4 text-secondary-400 mr-2" />
-                  <span>{person.experience} years experience</span>
-                </div>
               </div>
-              {person.expertise && person.expertise.length > 0 && (
-                <div className="mt-4">
-                  <div className="flex flex-wrap gap-2 justify-center">
-                    {person.expertise.map((skill, index) => (
-                      <span key={index} className="px-2 py-1 bg-primary-50 text-primary-700 rounded-full text-xs">
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-          <button
-            onClick={() => setIsAddPersonModalOpen(true)}
-            className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-secondary-200 rounded-xl hover:border-primary-500 hover:bg-primary-50 transition-colors"
-          >
-            <Plus className="h-8 w-8 text-secondary-400 mb-2" />
-            <span className="text-secondary-600">Add Team Member</span>
-          </button>
-        </div>
+            ))}
+            {hasPermission('employees', 'write') && (
+              <button
+                onClick={() => setIsAddPersonModalOpen(true)}
+                className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-secondary-200 rounded-xl hover:border-primary-500 hover:bg-primary-50 transition-colors"
+              >
+                <Plus className="h-8 w-8 text-secondary-400 mb-2" />
+                <span className="text-secondary-600">Add Team Member</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Add Key Person Modal */}
-      {isAddPersonModalOpen && (
+      {/* Add/Edit Employee Modal */}
+      {(isAddPersonModalOpen || isEditPersonModalOpen) && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold">Add Team Member</h3>
+              <h3 className="text-xl font-semibold">
+                {isEditPersonModalOpen ? 'Edit Team Member' : 'Add Team Member'}
+              </h3>
               <button
-                onClick={() => setIsAddPersonModalOpen(false)}
+                onClick={() => {
+                  setIsAddPersonModalOpen(false);
+                  setIsEditPersonModalOpen(false);
+                  setEditingEmployee(null);
+                  setNewEmployee({
+                    full_name: '',
+                    job_position: '',
+                    email: '',
+                    phone: '',
+                    profile_image_url: '',
+                    years_experience: 0,
+                    expertise: [],
+                    role_name: 'employee'
+                  });
+                }}
                 className="p-2 hover:bg-secondary-100 rounded-lg"
               >
                 <X className="h-5 w-5" />
@@ -1033,8 +1191,8 @@ const MerchantProfile = () => {
                 </label>
                 <input
                   type="text"
-                  value={newKeyPerson.name}
-                  onChange={(e) => setNewKeyPerson({ ...newKeyPerson, name: e.target.value })}
+                  value={newEmployee.full_name}
+                  onChange={(e) => setNewEmployee({ ...newEmployee, full_name: e.target.value })}
                   className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   placeholder="Enter full name"
                   required
@@ -1046,12 +1204,32 @@ const MerchantProfile = () => {
                 </label>
                 <input
                   type="text"
-                  value={newKeyPerson.position}
-                  onChange={(e) => setNewKeyPerson({ ...newKeyPerson, position: e.target.value })}
+                  value={newEmployee.job_position}
+                  onChange={(e) => setNewEmployee({ ...newEmployee, job_position: e.target.value })}
                   className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   placeholder="Enter position"
                   required
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-700 mb-1">
+                  Role *
+                </label>
+                <select
+                  value={newEmployee.role_name}
+                  onChange={(e) => setNewEmployee({ ...newEmployee, role_name: e.target.value })}
+                  className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  required
+                >
+                  {roles.map((role) => (
+                    <option key={role.id} value={role.name}>
+                      {role.display_name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-secondary-500 mt-1">
+                  Role determines access permissions in the portal
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1060,8 +1238,8 @@ const MerchantProfile = () => {
                   </label>
                   <input
                     type="email"
-                    value={newKeyPerson.email}
-                    onChange={(e) => setNewKeyPerson({ ...newKeyPerson, email: e.target.value })}
+                    value={newEmployee.email}
+                    onChange={(e) => setNewEmployee({ ...newEmployee, email: e.target.value })}
                     className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     placeholder="Enter email"
                   />
@@ -1072,8 +1250,8 @@ const MerchantProfile = () => {
                   </label>
                   <input
                     type="tel"
-                    value={newKeyPerson.phone}
-                    onChange={(e) => setNewKeyPerson({ ...newKeyPerson, phone: e.target.value })}
+                    value={newEmployee.phone}
+                    onChange={(e) => setNewEmployee({ ...newEmployee, phone: e.target.value })}
                     className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     placeholder="Enter phone number"
                   />
@@ -1085,8 +1263,8 @@ const MerchantProfile = () => {
                 </label>
                 <input
                   type="number"
-                  value={newKeyPerson.experience}
-                  onChange={(e) => setNewKeyPerson({ ...newKeyPerson, experience: parseInt(e.target.value) })}
+                  value={newEmployee.years_experience}
+                  onChange={(e) => setNewEmployee({ ...newEmployee, years_experience: parseInt(e.target.value) || 0 })}
                   className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   placeholder="Enter years of experience"
                   min="0"
@@ -1099,8 +1277,8 @@ const MerchantProfile = () => {
                 </label>
                 <input
                   type="url"
-                  value={newKeyPerson.image}
-                  onChange={(e) => setNewKeyPerson({ ...newKeyPerson, image: e.target.value })}
+                  value={newEmployee.profile_image_url}
+                  onChange={(e) => setNewEmployee({ ...newEmployee, profile_image_url: e.target.value })}
                   className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   placeholder="Enter image URL"
                 />
@@ -1108,13 +1286,13 @@ const MerchantProfile = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Expertise (comma separated)
+                  Expertise (comma-separated)
                 </label>
                 <input
                   type="text"
-                  value={newKeyPerson.expertise?.join(', ')}
-                  onChange={(e) => setNewKeyPerson({ 
-                    ...newKeyPerson, 
+                  value={(newEmployee.expertise || []).join(', ')}
+                  onChange={(e) => setNewEmployee({ 
+                    ...newEmployee, 
                     expertise: e.target.value.split(',').map(item => item.trim()).filter(Boolean)
                   })}
                   className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
@@ -1122,18 +1300,32 @@ const MerchantProfile = () => {
                 />
               </div>
             </div>
-            <div className="mt-6 flex justify-end space-x-3">
+            <div className="flex justify-end space-x-3 mt-6">
               <button
-                onClick={() => setIsAddPersonModalOpen(false)}
-                className="px-4 py-2 text-secondary-700 hover:bg-secondary-100 rounded-lg"
+                onClick={() => {
+                  setIsAddPersonModalOpen(false);
+                  setIsEditPersonModalOpen(false);
+                  setEditingEmployee(null);
+                  setNewEmployee({
+                    full_name: '',
+                    job_position: '',
+                    email: '',
+                    phone: '',
+                    profile_image_url: '',
+                    years_experience: 0,
+                    expertise: [],
+                    role_name: 'employee'
+                  });
+                }}
+                className="px-4 py-2 text-secondary-700 bg-secondary-100 rounded-lg hover:bg-secondary-200 transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={handleAddKeyPerson}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                onClick={isEditPersonModalOpen ? handleUpdateEmployee : handleAddKeyPerson}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
               >
-                Add Team Member
+                {isEditPersonModalOpen ? 'Update Employee' : 'Add Employee'}
               </button>
             </div>
           </div>
