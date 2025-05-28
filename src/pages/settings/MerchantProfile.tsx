@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Building2,
   Mail,
@@ -60,12 +60,15 @@ import {
   Hammer,
   Cpu,
   Cog,
-  Paperclip,
+  Paperclip
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useCompanyData, type CompanyData, type UpdateCompanyDataParams } from '../../lib/hooks/useCompanyData';
-import { useCompanyEmployees, type CompanyMember, type NewMember, type Role } from '../../lib/hooks/useCompanyEmployees';
 import { useAuth } from '../../lib/auth';
+import { useCompanyData } from '../../lib/hooks/useCompanyData';
+import { useCompanyEmployees, type CompanyMember, type NewMember } from '../../lib/hooks/useCompanyEmployees';
+import { useSubscription } from '../../lib/hooks/useSubscription';
+import { useCertifications, type Certification, type NewCertification } from '../../lib/hooks/useCertifications';
+import { usePerformanceMetrics, type PerformanceMetric } from '../../lib/hooks/usePerformanceMetrics';
 
 interface SubscriptionTier {
   name: string;
@@ -101,18 +104,6 @@ interface PaymentHistory {
   invoiceUrl: string;
 }
 
-interface Certification {
-  id: string;
-  name: string;
-  issuer: string;
-  issueDate: string;
-  expiryDate: string;
-  status: 'active' | 'expired' | 'pending';
-  documentUrl?: string;
-  type: 'iso' | 'environmental' | 'safety' | 'other';
-  description?: string;
-}
-
 interface KeyPerson {
   id: string;
   name: string;
@@ -124,305 +115,6 @@ interface KeyPerson {
   expertise?: string[];
 }
 
-interface PerformanceMetric {
-  id: string;
-  name: string;
-  value: number;
-  unit: string;
-  trend: number;
-  target?: number;
-  status: 'good' | 'warning' | 'critical';
-  history: { date: string; value: number }[];
-}
-
-const subscriptionTiers: SubscriptionTier[] = [
-  {
-    name: 'Free',
-    price: 'Free',
-    yearlyDiscount: '–',
-    monthlyPrice: 0,
-    features: {
-      customerType: 'B2C',
-      productsAllowed: 'Up to 3',
-      ordersLimit: '10 orders/month\nMax 500 SAR GMV',
-      coverage: 'Domestic Only',
-      branches: '1 branch',
-      drivers: '3',
-      inventory: 'Basic',
-      compliance: 'Basic',
-      marketing: '–',
-      trial: '14 days',
-      integration: 'N/A',
-      analytics: '–',
-      support: '24/7',
-      training: 'Basic',
-      commission: 'Tax + Transaction Fees Only',
-    }
-  },
-  {
-    name: 'Basic',
-    price: '750 SAR/month',
-    yearlyDiscount: '10%',
-    monthlyPrice: 750,
-    features: {
-      customerType: 'B2C',
-      productsAllowed: 'Up to 5',
-      ordersLimit: '100 orders/month\nMax 5,000 SAR GMV',
-      coverage: 'Domestic Only',
-      branches: 'Up to 3 (+200 SAR per extra)',
-      drivers: '10',
-      inventory: 'Basic',
-      compliance: 'Basic',
-      marketing: 'Directory Listing',
-      trial: '1 month',
-      integration: 'API Access',
-      analytics: 'Basic',
-      support: '24/7',
-      training: 'Basic',
-      commission: 'Tax + Transaction Fees Only',
-    }
-  },
-  {
-    name: 'Advanced',
-    price: '1,500 SAR/month',
-    yearlyDiscount: '12%',
-    monthlyPrice: 1500,
-    recommended: true,
-    features: {
-      customerType: 'B2B & B2C',
-      productsAllowed: 'Up to 35',
-      ordersLimit: '500 orders/month\nMax 25,000 SAR GMV',
-      coverage: 'Domestic + 1 country',
-      branches: 'Up to 7 (+150 SAR per extra)',
-      drivers: '50',
-      inventory: 'Advanced',
-      compliance: 'Advanced',
-      marketing: 'Promotions & Campaigns',
-      trial: '3 months',
-      integration: 'API Access',
-      analytics: 'Advanced',
-      support: '24/7 + KAM',
-      training: 'Enhanced',
-      commission: '8–20% (UPC-based)',
-    }
-  },
-  {
-    name: 'Premium',
-    price: 'Contact Us',
-    yearlyDiscount: '5%',
-    features: {
-      customerType: 'B2B, B2C & B2G',
-      productsAllowed: 'Unlimited',
-      ordersLimit: 'Unlimited orders & GMV',
-      coverage: 'Unlimited Global',
-      branches: 'Up to 100 (+100 SAR per extra)',
-      drivers: 'Unlimited',
-      inventory: 'Advanced',
-      compliance: 'Advanced',
-      marketing: 'Featured & Custom Campaigns',
-      trial: '3 months',
-      integration: 'Custom API Setup',
-      analytics: 'Full Performance Reports',
-      support: '24/7 + Dedicated KAM',
-      training: 'Full Training Suite',
-      commission: '8–20% (UPC-based)',
-    }
-  }
-];
-
-const mockPaymentHistory: PaymentHistory[] = [
-  {
-    id: 'INV-2024-001',
-    date: '2024-03-15',
-    amount: 750,
-    plan: 'Basic',
-    status: 'completed',
-    invoiceUrl: '#',
-  },
-  {
-    id: 'INV-2024-002',
-    date: '2024-02-15',
-    amount: 750,
-    plan: 'Basic',
-    status: 'completed',
-    invoiceUrl: '#',
-  },
-  {
-    id: 'INV-2024-003',
-    date: '2024-01-15',
-    amount: 750,
-    plan: 'Basic',
-    status: 'completed',
-    invoiceUrl: '#',
-  },
-];
-
-const mockCertifications: Certification[] = [
-  {
-    id: '1',
-    name: 'ISO 9001:2015',
-    issuer: 'International Organization for Standardization',
-    issueDate: '2022-05-15',
-    expiryDate: '2025-05-14',
-    status: 'active',
-    documentUrl: '#',
-    type: 'iso',
-    description: 'Quality Management System certification'
-  },
-  {
-    id: '2',
-    name: 'ISO 14001:2015',
-    issuer: 'International Organization for Standardization',
-    issueDate: '2022-06-20',
-    expiryDate: '2025-06-19',
-    status: 'active',
-    documentUrl: '#',
-    type: 'environmental',
-    description: 'Environmental Management System certification'
-  },
-  {
-    id: '3',
-    name: 'OHSAS 18001',
-    issuer: 'Occupational Health and Safety Assessment Series',
-    issueDate: '2022-07-10',
-    expiryDate: '2025-07-09',
-    status: 'active',
-    documentUrl: '#',
-    type: 'safety',
-    description: 'Occupational Health and Safety Management certification'
-  },
-  {
-    id: '4',
-    name: 'API 650',
-    issuer: 'American Petroleum Institute',
-    issueDate: '2023-01-15',
-    expiryDate: '2026-01-14',
-    status: 'active',
-    documentUrl: '#',
-    type: 'other',
-    description: 'Welded Tanks for Oil Storage certification'
-  },
-];
-
-const mockKeyPersonnel: KeyPerson[] = [
-  {
-    id: '1',
-    name: 'Ahmed Al-Saud',
-    position: 'CEO',
-    email: 'ahmed@example.com',
-    phone: '+966-123-456-789',
-    image: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400',
-    experience: 15,
-    expertise: ['Energy Management', 'Business Strategy', 'International Trade']
-  },
-  {
-    id: '2',
-    name: 'Sarah Al-Omar',
-    position: 'Operations Director',
-    email: 'sarah@example.com',
-    phone: '+966-123-456-790',
-    image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-    experience: 12,
-    expertise: ['Supply Chain', 'Logistics', 'Process Optimization']
-  },
-  {
-    id: '3',
-    name: 'Mohammed Al-Qahtani',
-    position: 'Technical Director',
-    email: 'mohammed@example.com',
-    phone: '+966-123-456-791',
-    image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
-    experience: 18,
-    expertise: ['Gas Systems', 'Engineering', 'Safety Standards']
-  },
-];
-
-const mockPerformanceMetrics: PerformanceMetric[] = [
-  {
-    id: '1',
-    name: 'Delivery Time',
-    value: 1.8,
-    unit: 'days',
-    trend: -0.2,
-    target: 2,
-    status: 'good',
-    history: [
-      { date: '2024-01', value: 2.1 },
-      { date: '2024-02', value: 2.0 },
-      { date: '2024-03', value: 1.8 },
-    ]
-  },
-  {
-    id: '2',
-    name: 'Order Accuracy',
-    value: 98.5,
-    unit: '%',
-    trend: 0.5,
-    target: 99,
-    status: 'good',
-    history: [
-      { date: '2024-01', value: 97.8 },
-      { date: '2024-02', value: 98.0 },
-      { date: '2024-03', value: 98.5 },
-    ]
-  },
-  {
-    id: '3',
-    name: 'Return Rate',
-    value: 1.2,
-    unit: '%',
-    trend: -0.3,
-    target: 1.0,
-    status: 'warning',
-    history: [
-      { date: '2024-01', value: 1.8 },
-      { date: '2024-02', value: 1.5 },
-      { date: '2024-03', value: 1.2 },
-    ]
-  },
-  {
-    id: '4',
-    name: 'Response Time',
-    value: 2.5,
-    unit: 'hours',
-    trend: -0.5,
-    target: 2.0,
-    status: 'warning',
-    history: [
-      { date: '2024-01', value: 3.5 },
-      { date: '2024-02', value: 3.0 },
-      { date: '2024-03', value: 2.5 },
-    ]
-  },
-  {
-    id: '5',
-    name: 'Market Share',
-    value: 15.8,
-    unit: '%',
-    trend: 2.3,
-    status: 'good',
-    history: [
-      { date: '2024-01', value: 12.5 },
-      { date: '2024-02', value: 14.2 },
-      { date: '2024-03', value: 15.8 },
-    ]
-  },
-  {
-    id: '6',
-    name: 'Supply Chain Reliability',
-    value: 97.2,
-    unit: '%',
-    trend: 1.2,
-    target: 98.0,
-    status: 'good',
-    history: [
-      { date: '2024-01', value: 95.0 },
-      { date: '2024-02', value: 96.0 },
-      { date: '2024-03', value: 97.2 },
-    ]
-  },
-];
-
 const MerchantProfile = () => {
   const { user } = useAuth();
   const { companyData, loading, error, updateCompanyData } = useCompanyData();
@@ -430,52 +122,93 @@ const MerchantProfile = () => {
     members, 
     roles, 
     loading: employeesLoading, 
-    error: employeesError, 
-    addMember, 
-    updateMember, 
+    error: employeesError,
+    addMember,
+    updateMember,
     deleteMember,
-    hasPermission,
-    getRoleByName 
+    hasPermission 
   } = useCompanyEmployees();
   
-  const [activeTab, setActiveTab] = useState('info');
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  // Add subscription hook with dynamic data
+  const {
+    subscriptionData,
+    paymentHistory,
+    formattedTiers,
+    loading: subscriptionLoading,
+    error: subscriptionError,
+    updateSubscriptionPlan,
+    cancelSubscription,
+    isFreePlan,
+    canUpgrade,
+    canCancel
+  } = useSubscription();
+
+  // Add certifications hook
+  const {
+    certifications,
+    loading: certificationsLoading,
+    error: certificationsError,
+    addCertification,
+    updateCertification,
+    deleteCertification,
+    uploadDocument,
+    isExpired,
+    isExpiringSoon,
+    getCertificationTypeDisplayName,
+    getStatusDisplayName
+  } = useCertifications();
+
+  // Add performance metrics hook
+  const {
+    performanceData,
+    loading: performanceLoading,
+    error: performanceError,
+    refreshMetrics,
+    getMetricsByCategory
+  } = usePerformanceMetrics();
+
+  const [activeTab, setActiveTab] = useState('company');
   const [isYearly, setIsYearly] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'bank'>('card');
   const [cardDetails, setCardDetails] = useState({
     number: '',
     expiry: '',
     cvc: '',
-    name: '',
+    name: ''
   });
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isAddPersonModalOpen, setIsAddPersonModalOpen] = useState(false);
-  const [isEditPersonModalOpen, setIsEditPersonModalOpen] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState<CompanyMember | null>(null);
   const [isAddCertificationModalOpen, setIsAddCertificationModalOpen] = useState(false);
-  const [newCertification, setNewCertification] = useState<Partial<Certification>>({
+  const [isEditCertificationModalOpen, setIsEditCertificationModalOpen] = useState(false);
+  const [editingCertification, setEditingCertification] = useState<Certification | null>(null);
+  const [newCertification, setNewCertification] = useState<NewCertification>({
     name: '',
     issuer: '',
-    issueDate: '',
-    expiryDate: '',
-    type: 'iso',
+    issue_date: '',
+    expiry_date: '',
+    certification_type: 'other',
     status: 'active',
-    description: ''
+    description: '',
+    document_url: ''
   });
+  const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
+  const [isEditEmployeeModalOpen, setIsEditEmployeeModalOpen] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<CompanyMember | null>(null);
   const [newEmployee, setNewEmployee] = useState<NewMember>({
     full_name: '',
     job_position: '',
     email: '',
     phone: '',
-    profile_image_url: '',
     years_experience: 0,
     expertise: [],
     role_name: 'employee'
   });
-  const [certifications, setCertifications] = useState<Certification[]>(mockCertifications);
-  const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetric[]>(mockPerformanceMetrics);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+
+  // Add ref for scrolling to plans
+  const plansRef = useRef<HTMLDivElement>(null);
 
   // Dynamic form data based on company data from database
   const [formData, setFormData] = useState({
@@ -491,8 +224,6 @@ const MerchantProfile = () => {
     country: '',
     foundedYear: '',
     teamSize: '',
-    certifications: mockCertifications,
-    keyPersonnel: mockKeyPersonnel,
     complianceHistory: [
       { date: '2023-12-15', type: 'Annual Audit', status: 'Passed', notes: 'No issues found' },
       { date: '2023-06-10', type: 'Safety Inspection', status: 'Passed', notes: 'Minor recommendations implemented' },
@@ -556,7 +287,7 @@ const MerchantProfile = () => {
     
     setIsSaving(true);
     try {
-      const updates: UpdateCompanyDataParams = {
+      const updates = {
         legal_name: formData.companyName,
         trade_name: formData.tradeName || undefined,
         email: formData.email,
@@ -583,50 +314,161 @@ const MerchantProfile = () => {
   };
 
   const handleSelectPlan = (planName: string) => {
+    if (planName === 'Premium') {
+      // Handle contact sales
+      window.open('mailto:sales@gasable.com?subject=Premium Plan Inquiry', '_blank');
+      return;
+    }
+    
     setSelectedPlan(planName);
     setShowPaymentModal(true);
   };
 
-  const handlePayment = () => {
-    alert('Payment processed successfully!');
-    setShowPaymentModal(false);
+  const handlePayment = async () => {
+    try {
+      // Update subscription plan
+      const result = await updateSubscriptionPlan(selectedPlan);
+      
+      if (result.success) {
+        setShowPaymentModal(false);
+        setSelectedPlan('');
+        // Show success message
+        alert('Subscription updated successfully!');
+      } else {
+        alert(result.error || 'Failed to update subscription');
+      }
+    } catch (error) {
+      console.error('Payment error:', error);
+      alert('Payment failed. Please try again.');
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (window.confirm('Are you sure you want to cancel your subscription? You will be downgraded to the Free plan.')) {
+      const result = await cancelSubscription();
+      
+      if (result.success) {
+        alert('Subscription cancelled successfully. You are now on the Free plan.');
+      } else {
+        alert(result.error || 'Failed to cancel subscription');
+      }
+    }
+  };
+
+  const handleUpgradePlan = () => {
+    // Scroll to plans section
+    plansRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleDownloadInvoice = (invoiceUrl: string) => {
     alert('Invoice downloaded!');
   };
 
-  const handleAddCertification = () => {
-    if (!newCertification.name || !newCertification.issuer || !newCertification.issueDate || !newCertification.expiryDate) {
+  const handleAddCertification = async () => {
+    if (!newCertification.name || !newCertification.issuer || !newCertification.issue_date || !newCertification.expiry_date) {
       alert('Please fill in all required fields');
       return;
     }
 
-    const certification: Certification = {
-      id: Date.now().toString(),
-      name: newCertification.name || '',
-      issuer: newCertification.issuer || '',
-      issueDate: newCertification.issueDate || '',
-      expiryDate: newCertification.expiryDate || '',
-      status: newCertification.status as 'active' | 'expired' | 'pending' || 'active',
-      type: newCertification.type as 'iso' | 'environmental' | 'safety' | 'other' || 'other',
-      description: newCertification.description || '',
-    };
-
-    setCertifications([...certifications, certification]);
-    setIsAddCertificationModalOpen(false);
-    setNewCertification({
-      name: '',
-      issuer: '',
-      issueDate: '',
-      expiryDate: '',
-      type: 'iso',
-      status: 'active',
-      description: ''
-    });
+    try {
+      const result = await addCertification(newCertification);
+      if (result.success) {
+        setIsAddCertificationModalOpen(false);
+        resetCertificationForm();
+        alert('Certification added successfully!');
+      } else {
+        alert(result.error || 'Failed to add certification');
+      }
+    } catch (err) {
+      console.error('Error adding certification:', err);
+      alert('Failed to add certification. Please try again.');
+    }
   };
 
-  const handleAddKeyPerson = async () => {
+  const handleEditCertification = (certification: Certification) => {
+    setEditingCertification(certification);
+    setNewCertification({
+      name: certification.name,
+      issuer: certification.issuer,
+      issue_date: certification.issue_date,
+      expiry_date: certification.expiry_date,
+      certification_type: certification.certification_type,
+      status: certification.status,
+      description: certification.description || '',
+      document_url: certification.document_url || ''
+    });
+    setIsEditCertificationModalOpen(true);
+  };
+
+  const handleUpdateCertification = async () => {
+    if (!editingCertification || !newCertification.name || !newCertification.issuer || !newCertification.issue_date || !newCertification.expiry_date) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      const result = await updateCertification({
+        id: editingCertification.id,
+        ...newCertification
+      });
+      if (result.success) {
+        setIsEditCertificationModalOpen(false);
+        setEditingCertification(null);
+        resetCertificationForm();
+        alert('Certification updated successfully!');
+      } else {
+        alert(result.error || 'Failed to update certification');
+      }
+    } catch (err) {
+      console.error('Error updating certification:', err);
+      alert('Failed to update certification. Please try again.');
+    }
+  };
+
+  const handleDeleteCertification = async (certificationId: string) => {
+    if (!confirm('Are you sure you want to delete this certification?')) {
+      return;
+    }
+
+    try {
+      const result = await deleteCertification(certificationId);
+      if (result.success) {
+        alert('Certification deleted successfully!');
+      } else {
+        alert(result.error || 'Failed to delete certification');
+      }
+    } catch (err) {
+      console.error('Error deleting certification:', err);
+      alert('Failed to delete certification. Please try again.');
+    }
+  };
+
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingDocument(true);
+    try {
+      const result = await uploadDocument(file);
+      if (result.success && result.url) {
+        setNewCertification(prev => ({
+          ...prev,
+          document_url: result.url!
+        }));
+        alert('Document uploaded successfully!');
+      } else {
+        alert(result.error || 'Failed to upload document');
+      }
+    } catch (err) {
+      console.error('Error uploading document:', err);
+      alert('Failed to upload document. Please try again.');
+    } finally {
+      setUploadingDocument(false);
+    }
+  };
+
+  // Employee management functions
+  const handleAddEmployee = async () => {
     if (!newEmployee.full_name || !newEmployee.job_position) {
       alert('Please fill in all required fields');
       return;
@@ -635,17 +477,8 @@ const MerchantProfile = () => {
     try {
       const result = await addMember(newEmployee);
       if (result.success) {
-        setIsAddPersonModalOpen(false);
-        setNewEmployee({
-          full_name: '',
-          job_position: '',
-          email: '',
-          phone: '',
-          profile_image_url: '',
-          years_experience: 0,
-          expertise: [],
-          role_name: 'employee'
-        });
+        setIsAddEmployeeModalOpen(false);
+        resetEmployeeForm();
         alert('Employee added successfully!');
       } else {
         alert(result.error || 'Failed to add employee');
@@ -656,28 +489,6 @@ const MerchantProfile = () => {
     }
   };
 
-  const handleRemoveCertification = (id: string) => {
-    setCertifications(certifications.filter(cert => cert.id !== id));
-  };
-
-  const handleRemoveKeyPerson = async (employeeId: string) => {
-    if (!confirm('Are you sure you want to remove this employee?')) {
-      return;
-    }
-
-    try {
-      const result = await deleteMember(employeeId);
-      if (result.success) {
-        alert('Employee removed successfully!');
-      } else {
-        alert(result.error || 'Failed to remove employee');
-      }
-    } catch (err) {
-      console.error('Error removing employee:', err);
-      alert('Failed to remove employee. Please try again.');
-    }
-  };
-
   const handleEditEmployee = (employee: CompanyMember) => {
     setEditingEmployee(employee);
     setNewEmployee({
@@ -685,12 +496,11 @@ const MerchantProfile = () => {
       job_position: employee.job_position,
       email: employee.email || '',
       phone: employee.phone || '',
-      profile_image_url: employee.profile_image_url || '',
       years_experience: employee.years_experience || 0,
       expertise: employee.expertise || [],
-      role_name: employee.role_name || 'employee'
+      role_name: employee.role_name
     });
-    setIsEditPersonModalOpen(true);
+    setIsEditEmployeeModalOpen(true);
   };
 
   const handleUpdateEmployee = async () => {
@@ -702,67 +512,63 @@ const MerchantProfile = () => {
     try {
       const result = await updateMember(editingEmployee.profile_id, newEmployee);
       if (result.success) {
-        setIsEditPersonModalOpen(false);
+        setIsEditEmployeeModalOpen(false);
         setEditingEmployee(null);
-        setNewEmployee({
-          full_name: '',
-          job_position: '',
-          email: '',
-          phone: '',
-          profile_image_url: '',
-          years_experience: 0,
-          expertise: [],
-          role_name: 'employee'
-        });
+        resetEmployeeForm();
         alert('Employee updated successfully!');
       } else {
         alert(result.error || 'Failed to update employee');
       }
     } catch (err) {
       console.error('Error updating employee:', err);
-      alert('Failed to update employee');
+      alert('Failed to update employee. Please try again.');
     }
   };
 
-  const handleAddEmployee = async () => {
-    if (!newEmployee.full_name || !newEmployee.job_position) {
-      alert('Please fill in all required fields');
+  const handleRemoveEmployee = async (profileId: string) => {
+    if (!confirm('Are you sure you want to remove this employee?')) {
       return;
     }
 
     try {
-      const result = await addMember(newEmployee);
+      const result = await deleteMember(profileId);
       if (result.success) {
-        setIsAddPersonModalOpen(false);
-        setNewEmployee({
-          full_name: '',
-          job_position: '',
-          email: '',
-          phone: '',
-          profile_image_url: '',
-          years_experience: 0,
-          expertise: [],
-          role_name: 'employee'
-        });
-        alert('Employee added successfully!');
+        alert('Employee removed successfully!');
       } else {
-        alert(result.error || 'Failed to add employee');
+        alert(result.error || 'Failed to remove employee');
       }
     } catch (err) {
-      console.error('Error adding employee:', err);
-      alert('Failed to add employee. Please try again.');
+      console.error('Error removing employee:', err);
+      alert('Failed to remove employee. Please try again.');
     }
   };
 
-  const tabs = [
-    { id: 'info', label: 'Company Info', icon: <Building2 className="h-5 w-5" /> },
-    { id: 'subscription', label: 'Subscription', icon: <Crown className="h-5 w-5" /> },
-    { id: 'certifications', label: 'Certifications', icon: <Award className="h-5 w-5" /> },
-    { id: 'performance', label: 'Performance', icon: <TrendingUp className="h-5 w-5" /> },
-    { id: 'compliance', label: 'Compliance', icon: <Shield className="h-5 w-5" /> },
-  ];
+  const resetCertificationForm = () => {
+    setNewCertification({
+      name: '',
+      issuer: '',
+      issue_date: '',
+      expiry_date: '',
+      certification_type: 'other',
+      status: 'active',
+      description: '',
+      document_url: ''
+    });
+  };
 
-  const getCertificationTypeIcon = (type: Certification['type']) => {
+  const resetEmployeeForm = () => {
+    setNewEmployee({
+      full_name: '',
+      job_position: '',
+      email: '',
+      phone: '',
+      years_experience: 0,
+      expertise: [],
+      role_name: 'employee'
+    });
+  };
+
+  const getCertificationTypeIcon = (type: Certification['certification_type']) => {
     switch (type) {
       case 'iso':
         return <FileCheck className="h-5 w-5 text-blue-600" />;
@@ -785,6 +591,8 @@ const MerchantProfile = () => {
         return 'bg-red-50 text-red-700 border-red-200';
       case 'pending':
         return 'bg-yellow-50 text-yellow-700 border-yellow-200';
+      case 'revoked':
+        return 'bg-gray-50 text-gray-700 border-gray-200';
       default:
         return 'bg-gray-50 text-gray-700 border-gray-200';
     }
@@ -821,535 +629,43 @@ const MerchantProfile = () => {
     }
   };
 
-  const renderCompanyInfo = () => (
-    <div className="space-y-8">
-      {/* Basic Info */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <div className="flex justify-between mb-6">
-          <h3 className="text-xl font-semibold text-secondary-900">Supplier Information</h3>
-          {!isEditMode ? (
-            <button 
-              onClick={() => setIsEditMode(true)}
-              className="px-4 py-2 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors flex items-center space-x-2"
-            >
-              <Edit className="h-5 w-5" />
-              <span>Edit Information</span>
-            </button>
-          ) : (
-            <div className="flex space-x-3">
-              <button 
-                onClick={() => setIsEditMode(false)}
-                className="px-4 py-2 bg-secondary-100 text-secondary-700 rounded-lg hover:bg-secondary-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleSaveChanges}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center space-x-2"
-              >
-                <Save className="h-5 w-5" />
-                <span>Save Changes</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center space-x-6 mb-6">
-          <div className="relative w-32 h-32">
-            <img
-              src={formData.logo || 'https://via.placeholder.com/128?text=Company+Logo'}
-              alt={formData.companyName || 'Company Logo'}
-              className="w-full h-full object-cover rounded-lg border border-secondary-200"
-            />
-            {isEditMode && (
-              <label className="absolute bottom-2 right-2 p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 cursor-pointer">
-                <Upload className="h-4 w-4" />
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleLogoUpload}
-                />
-              </label>
-            )}
-          </div>
-          <div className="flex-1">
-            {isEditMode ? (
-              <input
-                type="text"
-                name="companyName"
-                value={formData.companyName}
-                onChange={handleInputChange}
-                placeholder="Enter Company Name"
-                className="text-2xl font-bold text-gray-900 mb-2 w-full border-b border-gray-300 focus:border-primary-500 outline-none px-2 py-1"
-              />
-            ) : (
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">{formData.companyName}</h2>
-            )}
-            {/* Trade Name Field */}
-            {isEditMode && (
-              <input
-                type="text"
-                name="tradeName"
-                value={formData.tradeName}
-                onChange={handleInputChange}
-                placeholder="Enter Trade Name (optional)"
-                className="text-lg text-gray-600 mb-2 w-full border-b border-gray-300 focus:border-primary-500 outline-none px-2 py-1"
-              />
-            )}
-            {!isEditMode && formData.tradeName && (
-              <p className="text-lg text-gray-600 mb-2">Trading as: {formData.tradeName}</p>
-            )}
-            <div className="flex items-center space-x-4 text-gray-500">
-              <div className="flex items-center space-x-2">
-                <Calendar className="h-4 w-4" />
-                {isEditMode ? (
-                  <input
-                    type="text"
-                    name="foundedYear"
-                    value={formData.foundedYear}
-                    onChange={handleInputChange}
-                    placeholder="Founded Year"
-                    className="border-b border-gray-300 focus:border-primary-500 outline-none w-20"
-                  />
-                ) : (
-                  <span>Founded {formData.foundedYear}</span>
-                )}
-              </div>
-              <div className="flex items-center space-x-2">
-                <Users className="h-4 w-4" />
-                {isEditMode ? (
-                  <input
-                    type="text"
-                    name="teamSize"
-                    value={formData.teamSize}
-                    onChange={handleInputChange}
-                    placeholder="Team Size"
-                    className="border-b border-gray-300 focus:border-primary-500 outline-none w-20"
-                  />
-                ) : (
-                  <span>{formData.teamSize} employees</span>
-                )}
-              </div>
-              <div className="flex items-center">
-                <Star className="h-4 w-4 mr-1 text-yellow-400" />
-                <span>4.8 rating</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Company Description</label>
-            {isEditMode ? (
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                placeholder="Enter company description"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 h-32"
-              />
-            ) : (
-              <p className="text-gray-700">{formData.description}</p>
-            )}
-          </div>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Contact Information</label>
-              <div className="space-y-2">
-                <div className="flex items-center">
-                  <Phone className="h-5 w-5 text-gray-400 mr-2" />
-                  {isEditMode ? (
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      placeholder="Enter phone number"
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  ) : (
-                    <span>{formData.phone}</span>
-                  )}
-                </div>
-                <div className="flex items-center">
-                  <Mail className="h-5 w-5 text-gray-400 mr-2" />
-                  {isEditMode ? (
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      placeholder="Enter email address"
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  ) : (
-                    <span>{formData.email}</span>
-                  )}
-                </div>
-                <div className="flex items-center">
-                  <Globe className="h-5 w-5 text-gray-400 mr-2" />
-                  {isEditMode ? (
-                    <input
-                      type="url"
-                      name="website"
-                      value={formData.website}
-                      onChange={handleInputChange}
-                      placeholder="Enter website URL"
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  ) : (
-                    <span>{formData.website}</span>
-                  )}
-                </div>
-                <div className="flex items-start">
-                  <MapPin className="h-5 w-5 text-gray-400 mr-2 mt-1" />
-                  {isEditMode ? (
-                    <div className="flex-1 space-y-2">
-                      <input
-                        type="text"
-                        name="address"
-                        value={formData.address}
-                        onChange={handleInputChange}
-                        placeholder="Enter address"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          name="city"
-                          value={formData.city}
-                          onChange={handleInputChange}
-                          placeholder="City"
-                          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                        />
-                        <input
-                          type="text"
-                          name="country"
-                          value={formData.country}
-                          onChange={handleInputChange}
-                          placeholder="Country"
-                          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <span>{formData.address}, {formData.city}, {formData.country}</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Key Personnel */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold">Key Personnel</h3>
-          {hasPermission('employees', 'write') && (
-            <button
-              onClick={() => setIsAddPersonModalOpen(true)}
-              className="px-4 py-2 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors flex items-center space-x-2"
-            >
-              <Plus className="h-5 w-5" />
-              <span>Add Team Member</span>
-            </button>
-          )}
-        </div>
-        
-        {employeesLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <RefreshCw className="h-6 w-6 animate-spin text-primary-600" />
-            <span className="ml-2 text-gray-600">Loading employees...</span>
-          </div>
-        ) : employeesError ? (
-          <div className="text-center py-8">
-            <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-            <p className="text-red-600">Failed to load employees</p>
-            <p className="text-sm text-gray-500">{employeesError}</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {members.map((employee) => (
-              <div key={employee.profile_id} className="bg-white p-6 rounded-xl border border-secondary-200 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between mb-2">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    employee.member_status === 'active' ? 'bg-green-100 text-green-800' :
-                    employee.member_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {employee.member_status}
-                  </span>
-                  {hasPermission('employees', 'delete') && (
-                    <div className="flex space-x-1">
-                      <button
-                        onClick={() => handleEditEmployee(employee)}
-                        className="p-1 text-blue-500 hover:bg-blue-50 rounded-full"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleRemoveKeyPerson(employee.profile_id)}
-                        className="p-1 text-red-500 hover:bg-red-50 rounded-full"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-col items-center text-center mb-4">
-                  <img
-                    src={employee.profile_image_url || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400'}
-                    alt={employee.full_name}
-                    className="w-24 h-24 rounded-full object-cover mb-3"
-                  />
-                  <h4 className="text-lg font-semibold">{employee.full_name}</h4>
-                  <p className="text-secondary-600">{employee.job_position}</p>
-                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs mt-1">
-                    {getRoleByName(employee.role_name)?.display_name || employee.role_name}
-                  </span>
-                </div>
-                <div className="space-y-2 text-sm">
-                  {employee.email && (
-                    <div className="flex items-center justify-center">
-                      <Mail className="h-4 w-4 text-secondary-400 mr-2" />
-                      <span>{employee.email}</span>
-                    </div>
-                  )}
-                  {employee.phone && (
-                    <div className="flex items-center justify-center">
-                      <Phone className="h-4 w-4 text-secondary-400 mr-2" />
-                      <span>{employee.phone}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-center">
-                    <Briefcase className="h-4 w-4 text-secondary-400 mr-2" />
-                    <span>{employee.years_experience} years experience</span>
-                  </div>
-                </div>
-                {employee.expertise && employee.expertise.length > 0 && (
-                  <div className="mt-4">
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      {employee.expertise.map((skill, index) => (
-                        <span key={index} className="px-2 py-1 bg-primary-50 text-primary-700 rounded-full text-xs">
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-            {hasPermission('employees', 'write') && (
-              <button
-                onClick={() => setIsAddPersonModalOpen(true)}
-                className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-secondary-200 rounded-xl hover:border-primary-500 hover:bg-primary-50 transition-colors"
-              >
-                <Plus className="h-8 w-8 text-secondary-400 mb-2" />
-                <span className="text-secondary-600">Add Team Member</span>
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Add/Edit Employee Modal */}
-      {(isAddPersonModalOpen || isEditPersonModalOpen) && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold">
-                {isEditPersonModalOpen ? 'Edit Team Member' : 'Add Team Member'}
-              </h3>
-              <button
-                onClick={() => {
-                  setIsAddPersonModalOpen(false);
-                  setIsEditPersonModalOpen(false);
-                  setEditingEmployee(null);
-                  setNewEmployee({
-                    full_name: '',
-                    job_position: '',
-                    email: '',
-                    phone: '',
-                    profile_image_url: '',
-                    years_experience: 0,
-                    expertise: [],
-                    role_name: 'employee'
-                  });
-                }}
-                className="p-2 hover:bg-secondary-100 rounded-lg"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Full Name *
-                </label>
-                <input
-                  type="text"
-                  value={newEmployee.full_name}
-                  onChange={(e) => setNewEmployee({ ...newEmployee, full_name: e.target.value })}
-                  className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="Enter full name"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Position *
-                </label>
-                <input
-                  type="text"
-                  value={newEmployee.job_position}
-                  onChange={(e) => setNewEmployee({ ...newEmployee, job_position: e.target.value })}
-                  className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="Enter position"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Role *
-                </label>
-                <select
-                  value={newEmployee.role_name}
-                  onChange={(e) => setNewEmployee({ ...newEmployee, role_name: e.target.value })}
-                  className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  required
-                >
-                  {roles.map((role) => (
-                    <option key={role.id} value={role.name}>
-                      {role.display_name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-secondary-500 mt-1">
-                  Role determines access permissions in the portal
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700 mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    value={newEmployee.email}
-                    onChange={(e) => setNewEmployee({ ...newEmployee, email: e.target.value })}
-                    className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Enter email"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700 mb-1">
-                    Phone
-                  </label>
-                  <input
-                    type="tel"
-                    value={newEmployee.phone}
-                    onChange={(e) => setNewEmployee({ ...newEmployee, phone: e.target.value })}
-                    className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Enter phone number"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Years of Experience *
-                </label>
-                <input
-                  type="number"
-                  value={newEmployee.years_experience}
-                  onChange={(e) => setNewEmployee({ ...newEmployee, years_experience: parseInt(e.target.value) || 0 })}
-                  className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="Enter years of experience"
-                  min="0"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Profile Image URL
-                </label>
-                <input
-                  type="url"
-                  value={newEmployee.profile_image_url}
-                  onChange={(e) => setNewEmployee({ ...newEmployee, profile_image_url: e.target.value })}
-                  className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="Enter image URL"
-                />
-                <p className="text-xs text-secondary-500 mt-1">Leave blank for default avatar</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Expertise (comma-separated)
-                </label>
-                <input
-                  type="text"
-                  value={(newEmployee.expertise || []).join(', ')}
-                  onChange={(e) => setNewEmployee({ 
-                    ...newEmployee, 
-                    expertise: e.target.value.split(',').map(item => item.trim()).filter(Boolean)
-                  })}
-                  className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="E.g. Gas Systems, Engineering, Safety"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                onClick={() => {
-                  setIsAddPersonModalOpen(false);
-                  setIsEditPersonModalOpen(false);
-                  setEditingEmployee(null);
-                  setNewEmployee({
-                    full_name: '',
-                    job_position: '',
-                    email: '',
-                    phone: '',
-                    profile_image_url: '',
-                    years_experience: 0,
-                    expertise: [],
-                    role_name: 'employee'
-                  });
-                }}
-                className="px-4 py-2 text-secondary-700 bg-secondary-100 rounded-lg hover:bg-secondary-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={isEditPersonModalOpen ? handleUpdateEmployee : handleAddKeyPerson}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-              >
-                {isEditPersonModalOpen ? 'Update Employee' : 'Add Employee'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
   const renderSubscriptionPlans = () => (
-    <div className="space-y-6">
+    <div className="space-y-6" ref={plansRef}>
       {/* Current Plan Status */}
       <div className="bg-white rounded-xl shadow-sm p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold mb-2">Current Plan: Basic</h2>
-            <p className="text-gray-600">Next billing date: April 15, 2024</p>
+            <h2 className="text-2xl font-bold mb-2">
+              Current Plan: {subscriptionData?.currentPlan || 'Free'}
+            </h2>
+            {subscriptionData?.nextBillingDate && (
+              <p className="text-gray-600">
+                Next billing date: {subscriptionData.nextBillingDate}
+              </p>
+            )}
+            {isFreePlan() && (
+              <p className="text-gray-600">
+                You are currently on the free plan with no billing.
+              </p>
+            )}
           </div>
           <div className="flex items-center space-x-4">
-            <button className="px-4 py-2 text-primary-600 hover:bg-primary-50 rounded-lg">
-              Cancel Subscription
-            </button>
-            <button className="btn-primary">
-              Upgrade Plan
-            </button>
+            {canCancel() && (
+              <button 
+                onClick={handleCancelSubscription}
+                className="px-4 py-2 text-primary-600 hover:bg-primary-50 rounded-lg"
+              >
+                Cancel Subscription
+              </button>
+            )}
+            {canUpgrade() && (
+              <button 
+                onClick={handleUpgradePlan}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                Upgrade Plan
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1357,49 +673,61 @@ const MerchantProfile = () => {
       {/* Payment History */}
       <div className="bg-white rounded-xl shadow-sm p-6">
         <h2 className="text-xl font-bold mb-6">Payment History</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="text-left border-b border-gray-200">
-                <th className="pb-3 font-medium">Invoice #</th>
-                <th className="pb-3 font-medium">Date</th>
-                <th className="pb-3 font-medium">Amount</th>
-                <th className="pb-3 font-medium">Plan</th>
-                <th className="pb-3 font-medium">Status</th>
-                <th className="pb-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mockPaymentHistory.map((payment) => (
-                <tr key={payment.id} className="border-b border-gray-100">
-                  <td className="py-4">{payment.id}</td>
-                  <td className="py-4">{payment.date}</td>
-                  <td className="py-4">{payment.amount} SAR</td>
-                  <td className="py-4">{payment.plan}</td>
-                  <td className="py-4">
-                    <span className={`px-2 py-1 rounded-full text-sm ${
-                      payment.status === 'completed'
-                        ? 'bg-green-50 text-green-700'
-                        : payment.status === 'pending'
-                        ? 'bg-yellow-50 text-yellow-700'
-                        : 'bg-red-50 text-red-700'
-                    }`}>
-                      {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="py-4">
-                    <button
-                      onClick={() => handleDownloadInvoice(payment.invoiceUrl)}
-                      className="text-primary-600 hover:text-primary-700"
-                    >
-                      <Download className="h-5 w-5" />
-                    </button>
-                  </td>
+        {paymentHistory.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="text-left border-b border-gray-200">
+                  <th className="pb-3 font-medium">Invoice #</th>
+                  <th className="pb-3 font-medium">Date</th>
+                  <th className="pb-3 font-medium">Amount</th>
+                  <th className="pb-3 font-medium">Plan</th>
+                  <th className="pb-3 font-medium">Status</th>
+                  <th className="pb-3 font-medium">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {paymentHistory.map((payment) => (
+                  <tr key={payment.id} className="border-b border-gray-100">
+                    <td className="py-4">{payment.id}</td>
+                    <td className="py-4">{payment.date}</td>
+                    <td className="py-4">{payment.amount} SAR</td>
+                    <td className="py-4">{payment.plan}</td>
+                    <td className="py-4">
+                      <span className={`px-2 py-1 rounded-full text-sm ${
+                        payment.status === 'completed'
+                          ? 'bg-green-50 text-green-700'
+                          : payment.status === 'pending'
+                          ? 'bg-yellow-50 text-yellow-700'
+                          : 'bg-red-50 text-red-700'
+                      }`}>
+                        {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                      </span>
+                    </td>
+                    <td className="py-4">
+                      <button
+                        onClick={() => handleDownloadInvoice(payment.invoiceUrl)}
+                        className="text-primary-600 hover:text-primary-700"
+                      >
+                        <Download className="h-5 w-5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <Receipt className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+            <p className="text-gray-600">No payment history available</p>
+            {isFreePlan() && (
+              <p className="text-sm text-gray-500 mt-2">
+                Upgrade to a paid plan to see payment history
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Billing Cycle Toggle */}
@@ -1421,101 +749,133 @@ const MerchantProfile = () => {
         </span>
       </div>
 
-      {/* Subscription Plans */}
-      <div className="grid grid-cols-4 gap-6">
-        {subscriptionTiers.map((tier, index) => (
-          <div
-            key={index}
-            className={`relative rounded-xl border ${
-              tier.recommended
-                ? 'border-primary-500 shadow-lg'
-                : 'border-gray-200'
-            }`}
-          >
-            {tier.recommended && (
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary-500 text-white px-4 py-1 rounded-full text-sm font-medium">
-                Recommended
-              </div>
-            )}
-            <div className="p-6">
-              <h3 className="text-xl font-bold mb-2">{tier.name}</h3>
-              <div className="mb-4">
-                <div className="text-2xl font-bold text-primary-600">
-                  {tier.monthlyPrice ? (
-                    <>
-                      {isYearly ? (
+      {/* Subscription Plans - Dynamic from Database */}
+      {subscriptionLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <RefreshCw className="h-6 w-6 animate-spin text-primary-600" />
+          <span className="ml-2 text-gray-600">Loading subscription plans...</span>
+        </div>
+      ) : subscriptionError ? (
+        <div className="text-center py-8">
+          <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+          <p className="text-red-600">Failed to load subscription plans</p>
+          <p className="text-sm text-gray-500">{subscriptionError}</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-4 gap-6">
+          {formattedTiers.map((tier, index) => {
+            const isCurrentPlan = tier.name === subscriptionData?.currentPlan;
+            
+            return (
+              <div
+                key={index}
+                className={`relative rounded-xl border ${
+                  tier.recommended
+                    ? 'border-primary-500 shadow-lg'
+                    : isCurrentPlan
+                    ? 'border-green-500 shadow-md'
+                    : 'border-gray-200'
+                }`}
+              >
+                {tier.recommended && (
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary-500 text-white px-4 py-1 rounded-full text-sm font-medium">
+                    Recommended
+                  </div>
+                )}
+                {isCurrentPlan && (
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-green-500 text-white px-4 py-1 rounded-full text-sm font-medium">
+                    Current Plan
+                  </div>
+                )}
+                <div className="p-6">
+                  <h3 className="text-xl font-bold mb-2">{tier.name}</h3>
+                  <div className="mb-4">
+                    <div className="text-2xl font-bold text-primary-600">
+                      {tier.monthlyPrice ? (
                         <>
-                          {(tier.monthlyPrice * 12 * (1 - parseFloat(tier.yearlyDiscount) / 100)).toFixed(0)} SAR/year
-                          <div className="text-sm text-green-600">Save {tier.yearlyDiscount}</div>
+                          {isYearly ? (
+                            <>
+                              {(tier.monthlyPrice * 12 * (1 - parseFloat(tier.yearlyDiscount) / 100)).toFixed(0)} SAR/year
+                              <div className="text-sm text-green-600">Save {tier.yearlyDiscount}</div>
+                            </>
+                          ) : (
+                            <>{tier.monthlyPrice} SAR/month</>
+                          )}
                         </>
                       ) : (
-                        <>{tier.monthlyPrice} SAR/month</>
+                        tier.price
                       )}
-                    </>
-                  ) : (
-                    tier.price
-                  )}
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-start">
-                    <Users className="h-5 w-5 text-primary-600 mt-1 mr-2" />
-                    <div>
-                      <div className="font-medium">Customer Type</div>
-                      <div className="text-sm text-gray-600">{tier.features.customerType}</div>
                     </div>
                   </div>
-                  <div className="flex items-start">
-                    <Package className="h-5 w-5 text-primary-600 mt-1 mr-2" />
-                    <div>
-                      <div className="font-medium">Products</div>
-                      <div className="text-sm text-gray-600">{tier.features.productsAllowed}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-start">
-                    <Truck className="h-5 w-5 text-primary-600 mt-1 mr-2" />
-                    <div>
-                      <div className="font-medium">Orders Limit</div>
-                      <div className="text-sm text-gray-600 whitespace-pre-line">{tier.features.ordersLimit}</div>
-                    </div>
-                  </div>
-                </div>
-                <hr />
-                <div className="space-y-2">
-                  {Object.entries(tier.features).map(([key, value]) => {
-                    if (!['customerType', 'productsAllowed', 'ordersLimit'].includes(key)) {
-                      return (
-                        <div key={key} className="flex items-center">
-                          {value === '–' ? (
-                            <X className="h-4 w-4 text-gray-400 mr-2" />
-                          ) : (
-                            <Check className="h-4 w-4 text-green-500 mr-2" />
-                          )}
-                          <span className="text-sm text-gray-600">{value}</span>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-start">
+                        <Users className="h-5 w-5 text-primary-600 mt-1 mr-2" />
+                        <div>
+                          <div className="font-medium">Customer Type</div>
+                          <div className="text-sm text-gray-600">{tier.features.customerType}</div>
                         </div>
-                      );
-                    }
-                    return null;
-                  })}
+                      </div>
+                      <div className="flex items-start">
+                        <Package className="h-5 w-5 text-primary-600 mt-1 mr-2" />
+                        <div>
+                          <div className="font-medium">Products</div>
+                          <div className="text-sm text-gray-600">{tier.features.productsAllowed}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-start">
+                        <Truck className="h-5 w-5 text-primary-600 mt-1 mr-2" />
+                        <div>
+                          <div className="font-medium">Orders Limit</div>
+                          <div className="text-sm text-gray-600 whitespace-pre-line">{tier.features.ordersLimit}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <hr />
+                    <div className="space-y-2">
+                      {Object.entries(tier.features).map(([key, value]) => {
+                        if (!['customerType', 'productsAllowed', 'ordersLimit'].includes(key)) {
+                          return (
+                            <div key={key} className="flex items-center">
+                              {value === '–' ? (
+                                <X className="h-4 w-4 text-gray-400 mr-2" />
+                              ) : (
+                                <Check className="h-4 w-4 text-green-500 mr-2" />
+                              )}
+                              <span className="text-sm text-gray-600">{value}</span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                  </div>
+                  <div className="mt-6">
+                    <button
+                      onClick={() => handleSelectPlan(tier.name)}
+                      disabled={isCurrentPlan}
+                      className={`w-full py-2 px-4 rounded-lg font-medium ${
+                        isCurrentPlan
+                          ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                          : tier.recommended
+                          ? 'bg-primary-600 text-white hover:bg-primary-700'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {isCurrentPlan 
+                        ? 'Current Plan' 
+                        : tier.name === 'Premium' 
+                        ? 'Contact Sales' 
+                        : 'Select Plan'
+                      }
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="mt-6">
-                <button
-                  onClick={() => handleSelectPlan(tier.name)}
-                  className={`w-full py-2 px-4 rounded-lg font-medium ${
-                    tier.recommended
-                      ? 'bg-primary-600 text-white hover:bg-primary-700'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {tier.name === 'Premium' ? 'Contact Sales' : 'Select Plan'}
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Payment Modal */}
       {showPaymentModal && (
@@ -1642,443 +1002,13 @@ const MerchantProfile = () => {
     </div>
   );
 
-  const renderCertifications = () => (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold">Certifications & Standards</h3>
-          <button
-            onClick={() => setIsAddCertificationModalOpen(true)}
-            className="px-4 py-2 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors flex items-center space-x-2"
-          >
-            <Plus className="h-5 w-5" />
-            <span>Add Certification</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {certifications.map((cert) => (
-            <motion.div
-              key={cert.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`p-6 rounded-xl border ${getCertificationStatusColor(cert.status)}`}
-            >
-              <div className="flex justify-between mb-4">
-                <div className="flex items-center space-x-3">
-                  {getCertificationTypeIcon(cert.type)}
-                  <h4 className="font-semibold text-lg">{cert.name}</h4>
-                </div>
-                <button
-                  onClick={() => handleRemoveCertification(cert.id)}
-                  className="p-1 text-red-500 hover:bg-red-50 rounded-full"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-secondary-600">Issuer:</span>
-                  <span className="font-medium">{cert.issuer}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-secondary-600">Issue Date:</span>
-                  <span>{cert.issueDate}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-secondary-600">Expiry Date:</span>
-                  <span>{cert.expiryDate}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-secondary-600">Status:</span>
-                  <span className={`capitalize ${
-                    cert.status === 'active' ? 'text-green-600' :
-                    cert.status === 'expired' ? 'text-red-600' : 'text-yellow-600'
-                  }`}>
-                    {cert.status}
-                  </span>
-                </div>
-              </div>
-              {cert.description && (
-                <div className="mt-4 pt-4 border-t border-secondary-100">
-                  <p className="text-secondary-600 text-sm">{cert.description}</p>
-                </div>
-              )}
-              <div className="mt-4 flex justify-end">
-                {cert.documentUrl && (
-                  <a
-                    href={cert.documentUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary-600 hover:text-primary-700 flex items-center space-x-1"
-                  >
-                    <FileText className="h-4 w-4" />
-                    <span>View Document</span>
-                  </a>
-                )}
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-
-      {/* Add Certification Modal */}
-      {isAddCertificationModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold">Add Certification</h3>
-              <button
-                onClick={() => setIsAddCertificationModalOpen(false)}
-                className="p-2 hover:bg-secondary-100 rounded-lg"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Certification Name *
-                </label>
-                <input
-                  type="text"
-                  value={newCertification.name}
-                  onChange={(e) => setNewCertification({ ...newCertification, name: e.target.value })}
-                  className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="E.g. ISO 9001:2015"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Issuing Organization *
-                </label>
-                <input
-                  type="text"
-                  value={newCertification.issuer}
-                  onChange={(e) => setNewCertification({ ...newCertification, issuer: e.target.value })}
-                  className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="E.g. International Organization for Standardization"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700 mb-1">
-                    Issue Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={newCertification.issueDate}
-                    onChange={(e) => setNewCertification({ ...newCertification, issueDate: e.target.value })}
-                    className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700 mb-1">
-                    Expiry Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={newCertification.expiryDate}
-                    onChange={(e) => setNewCertification({ ...newCertification, expiryDate: e.target.value })}
-                    className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Certification Type
-                </label>
-                <select
-                  value={newCertification.type}
-                  onChange={(e) => setNewCertification({ ...newCertification, type: e.target.value as Certification['type'] })}
-                  className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                >
-                  <option value="iso">ISO Certification</option>
-                  <option value="environmental">Environmental Certification</option>
-                  <option value="safety">Safety Certification</option>
-                  <option value="other">Other Certification</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Status
-                </label>
-                <select
-                  value={newCertification.status}
-                  onChange={(e) => setNewCertification({ ...newCertification, status: e.target.value as Certification['status'] })}
-                  className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                >
-                  <option value="active">Active</option>
-                  <option value="pending">Pending</option>
-                  <option value="expired">Expired</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Description
-                </label>
-                <textarea
-                  value={newCertification.description}
-                  onChange={(e) => setNewCertification({ ...newCertification, description: e.target.value })}
-                  className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 h-24"
-                  placeholder="Enter a brief description of this certification"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700 mb-1">
-                  Document Upload
-                </label>
-                <div className="border-2 border-dashed border-secondary-200 rounded-lg p-4 text-center">
-                  <Paperclip className="h-8 w-8 mx-auto mb-2 text-secondary-400" />
-                  <p className="text-sm text-secondary-600">
-                    Drag and drop file here or click to browse
-                  </p>
-                  <input type="file" className="hidden" />
-                </div>
-              </div>
-            </div>
-            <div className="mt-6 flex justify-end space-x-3">
-              <button
-                onClick={() => setIsAddCertificationModalOpen(false)}
-                className="px-4 py-2 text-secondary-700 hover:bg-secondary-100 rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddCertification}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-              >
-                Add Certification
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  const renderPerformance = () => (
-    <div className="space-y-6">
-      {/* KPI Overview */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <h3 className="text-xl font-semibold mb-6">Key Performance Indicators</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {performanceMetrics.map((metric) => (
-            <div key={metric.id} className="bg-white p-6 rounded-xl border border-secondary-200 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-3">
-                  <div className={`p-2 rounded-lg ${
-                    metric.status === 'good' ? 'bg-green-50' :
-                    metric.status === 'warning' ? 'bg-yellow-50' : 'bg-red-50'
-                  }`}>
-                    {getMetricIcon(metric.name)}
-                  </div>
-                  <h4 className="font-semibold">{metric.name}</h4>
-                </div>
-                <div className={`flex items-center ${
-                  metric.trend > 0 
-                    ? metric.name.toLowerCase().includes('return') ? 'text-red-600' : 'text-green-600'
-                    : metric.name.toLowerCase().includes('return') ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {metric.trend > 0 ? (
-                    <ArrowUpRight className="h-4 w-4 mr-1" />
-                  ) : (
-                    <ArrowDownRight className="h-4 w-4 mr-1" />
-                  )}
-                  <span>{Math.abs(metric.trend)}{metric.unit === '%' ? '%' : ''}</span>
-                </div>
-              </div>
-              <div className="flex items-end justify-between">
-                <div>
-                  <span className="text-3xl font-bold">{metric.value}</span>
-                  <span className="text-secondary-600 ml-1">{metric.unit}</span>
-                </div>
-                {metric.target && (
-                  <div className="text-sm text-secondary-600">
-                    Target: {metric.target}{metric.unit}
-                  </div>
-                )}
-              </div>
-              <div className="mt-4 h-10">
-                <div className="w-full bg-secondary-100 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full ${
-                      metric.status === 'good' ? 'bg-green-500' :
-                      metric.status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'
-                    }`}
-                    style={{ 
-                      width: `${
-                        metric.name.toLowerCase().includes('return')
-                          ? `${100 - (metric.value / (metric.target || 5) * 100)}%`
-                          : `${(metric.value / (metric.target || 100) * 100)}%`
-                      }`
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Operational Performance */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <h3 className="text-xl font-semibold mb-6">Operational Performance</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="p-6 bg-secondary-50 rounded-xl">
-            <h4 className="font-semibold mb-4 flex items-center">
-              <Workflow className="h-5 w-5 text-primary-600 mr-2" />
-              Supply Chain Reliability
-            </h4>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-secondary-600">Uptime</span>
-              <span className="font-medium">99.2%</span>
-            </div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-secondary-600">On-time Delivery</span>
-              <span className="font-medium">95.8%</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-secondary-600">Inventory Accuracy</span>
-              <span className="font-medium">98.5%</span>
-            </div>
-          </div>
-          <div className="p-6 bg-secondary-50 rounded-xl">
-            <h4 className="font-semibold mb-4 flex items-center">
-              <Tag className="h-5 w-5 text-primary-600 mr-2" />
-              Pricing Competitiveness
-            </h4>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-secondary-600">Market Average</span>
-              <span className="font-medium">100%</span>
-            </div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-secondary-600">Your Pricing</span>
-              <span className="font-medium text-green-600">96.5%</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-secondary-600">Price Perception</span>
-              <span className="font-medium">Competitive</span>
-            </div>
-          </div>
-          <div className="p-6 bg-secondary-50 rounded-xl">
-            <h4 className="font-semibold mb-4 flex items-center">
-              <PieChart className="h-5 w-5 text-primary-600 mr-2" />
-              Market Share
-            </h4>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-secondary-600">Current Share</span>
-              <span className="font-medium">15.8%</span>
-            </div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-secondary-600">YoY Growth</span>
-              <span className="font-medium text-green-600">+2.3%</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-secondary-600">Market Position</span>
-              <span className="font-medium">#2 in Region</span>
-            </div>
-          </div>
-          <div className="p-6 bg-secondary-50 rounded-xl">
-            <h4 className="font-semibold mb-4 flex items-center">
-              <Sliders className="h-5 w-5 text-primary-600 mr-2" />
-              Flexibility & Customization
-            </h4>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-secondary-600">MOQ Adjustments</span>
-              <span className="font-medium text-green-600">Supported</span>
-            </div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-secondary-600">Product Customization</span>
-              <span className="font-medium text-green-600">Available</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-secondary-600">Bundled Offers</span>
-              <span className="font-medium text-green-600">Available</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderCompliance = () => (
-    <div className="space-y-6">
-      {/* Compliance History */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <h3 className="text-xl font-semibold mb-6">Compliance History</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="text-left border-b border-gray-200">
-                <th className="pb-3 font-medium">Date</th>
-                <th className="pb-3 font-medium">Type</th>
-                <th className="pb-3 font-medium">Status</th>
-                <th className="pb-3 font-medium">Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {formData.complianceHistory.map((item, index) => (
-                <tr key={index} className="border-b border-gray-100">
-                  <td className="py-4">{item.date}</td>
-                  <td className="py-4">{item.type}</td>
-                  <td className="py-4">
-                    <span className={`px-2 py-1 rounded-full text-sm ${
-                      item.status === 'Passed'
-                        ? 'bg-green-50 text-green-700'
-                        : 'bg-red-50 text-red-700'
-                    }`}>
-                      {item.status}
-                    </span>
-                  </td>
-                  <td className="py-4">{item.notes}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Risk Management */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <h3 className="text-xl font-semibold mb-6">Risk Management</h3>
-        
-        <div className="mb-8">
-          <h4 className="font-semibold mb-4 flex items-center">
-            <AlertTriangle className="h-5 w-5 text-primary-600 mr-2" />
-            Risk Mitigation Strategies
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {formData.riskStrategies.map((strategy, index) => (
-              <div key={index} className="p-4 bg-secondary-50 rounded-lg">
-                <h5 className="font-medium mb-2">{strategy.name}</h5>
-                <p className="text-secondary-600 text-sm">{strategy.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-        
-        <div>
-          <h4 className="font-semibold mb-4 flex items-center">
-            <Shield className="h-5 w-5 text-primary-600 mr-2" />
-            Contingency Plans
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {formData.contingencyPlans.map((plan, index) => (
-              <div key={index} className="p-4 bg-secondary-50 rounded-lg">
-                <h5 className="font-medium mb-2">{plan.name}</h5>
-                <p className="text-secondary-600 text-sm">{plan.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  const tabs = [
+    { id: 'company', label: 'Company Info', icon: <Building2 className="h-5 w-5" /> },
+    { id: 'subscription', label: 'Subscription', icon: <Crown className="h-5 w-5" /> },
+    { id: 'certifications', label: 'Certifications', icon: <Award className="h-5 w-5" /> },
+    { id: 'performance', label: 'Performance', icon: <TrendingUp className="h-5 w-5" /> },
+    { id: 'compliance', label: 'Compliance', icon: <Shield className="h-5 w-5" /> },
+  ];
 
   return (
     <div className="container mx-auto py-8">
@@ -2087,7 +1017,7 @@ const MerchantProfile = () => {
         <button
           onClick={handleSaveChanges}
           disabled={isSaving || loading}
-          className="btn-primary flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSaving ? (
             <RefreshCw className="h-5 w-5 animate-spin" />
@@ -2145,11 +1075,1036 @@ const MerchantProfile = () => {
             </div>
           </div>
 
-          {activeTab === 'info' && renderCompanyInfo()}
+          {activeTab === 'company' && (
+            <div className="space-y-8">
+              {/* Basic Info */}
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <div className="flex justify-between mb-6">
+                  <h3 className="text-xl font-semibold text-secondary-900">Supplier Information</h3>
+                  {!isEditMode ? (
+                    <button 
+                      onClick={() => setIsEditMode(true)}
+                      className="px-4 py-2 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors flex items-center space-x-2"
+                    >
+                      <Edit className="h-5 w-5" />
+                      <span>Edit Information</span>
+                    </button>
+                  ) : (
+                    <div className="flex space-x-3">
+                      <button 
+                        onClick={() => setIsEditMode(false)}
+                        className="px-4 py-2 bg-secondary-100 text-secondary-700 rounded-lg hover:bg-secondary-200 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        onClick={handleSaveChanges}
+                        className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center space-x-2"
+                      >
+                        <Save className="h-5 w-5" />
+                        <span>Save Changes</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-6 mb-6">
+                  <div className="relative w-32 h-32">
+                    <img
+                      src={formData.logo || 'https://via.placeholder.com/128?text=Company+Logo'}
+                      alt={formData.companyName || 'Company Logo'}
+                      className="w-full h-full object-cover rounded-lg border border-secondary-200"
+                    />
+                    {isEditMode && (
+                      <label className="absolute bottom-2 right-2 p-2 bg-white rounded-full shadow-lg hover:bg-gray-50 cursor-pointer">
+                        <Upload className="h-4 w-4" />
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleLogoUpload}
+                        />
+                      </label>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    {isEditMode ? (
+                      <input
+                        type="text"
+                        name="companyName"
+                        value={formData.companyName}
+                        onChange={handleInputChange}
+                        placeholder="Enter Company Name"
+                        className="text-2xl font-bold text-gray-900 mb-2 w-full border-b border-gray-300 focus:border-primary-500 outline-none px-2 py-1"
+                      />
+                    ) : (
+                      <h2 className="text-2xl font-bold text-gray-900 mb-2">{formData.companyName}</h2>
+                    )}
+                    {/* Trade Name Field */}
+                    {isEditMode && (
+                      <input
+                        type="text"
+                        name="tradeName"
+                        value={formData.tradeName}
+                        onChange={handleInputChange}
+                        placeholder="Enter Trade Name (optional)"
+                        className="text-lg text-gray-600 mb-2 w-full border-b border-gray-300 focus:border-primary-500 outline-none px-2 py-1"
+                      />
+                    )}
+                    {!isEditMode && formData.tradeName && (
+                      <p className="text-lg text-gray-600 mb-2">Trading as: {formData.tradeName}</p>
+                    )}
+                    <div className="flex items-center space-x-4 text-gray-500">
+                      <div className="flex items-center space-x-2">
+                        <Calendar className="h-4 w-4" />
+                        {isEditMode ? (
+                          <input
+                            type="text"
+                            name="foundedYear"
+                            value={formData.foundedYear}
+                            onChange={handleInputChange}
+                            placeholder="Founded Year"
+                            className="border-b border-gray-300 focus:border-primary-500 outline-none w-20"
+                          />
+                        ) : (
+                          <span>Founded {formData.foundedYear}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Users className="h-4 w-4" />
+                        {isEditMode ? (
+                          <input
+                            type="text"
+                            name="teamSize"
+                            value={formData.teamSize}
+                            onChange={handleInputChange}
+                            placeholder="Team Size"
+                            className="border-b border-gray-300 focus:border-primary-500 outline-none w-20"
+                          />
+                        ) : (
+                          <span>{formData.teamSize} employees</span>
+                        )}
+                      </div>
+                      <div className="flex items-center">
+                        <Star className="h-4 w-4 mr-1 text-yellow-400" />
+                        <span>4.8 rating</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Company Description</label>
+                    {isEditMode ? (
+                      <textarea
+                        name="description"
+                        value={formData.description}
+                        onChange={handleInputChange}
+                        placeholder="Enter company description"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 h-32"
+                      />
+                    ) : (
+                      <p className="text-gray-700">{formData.description}</p>
+                    )}
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Contact Information</label>
+                      <div className="space-y-2">
+                        <div className="flex items-center">
+                          <Phone className="h-5 w-5 text-gray-400 mr-2" />
+                          {isEditMode ? (
+                            <input
+                              type="tel"
+                              name="phone"
+                              value={formData.phone}
+                              onChange={handleInputChange}
+                              placeholder="Enter phone number"
+                              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                            />
+                          ) : (
+                            <span>{formData.phone}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center">
+                          <Mail className="h-5 w-5 text-gray-400 mr-2" />
+                          {isEditMode ? (
+                            <input
+                              type="email"
+                              name="email"
+                              value={formData.email}
+                              onChange={handleInputChange}
+                              placeholder="Enter email address"
+                              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                            />
+                          ) : (
+                            <span>{formData.email}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center">
+                          <Globe className="h-5 w-5 text-gray-400 mr-2" />
+                          {isEditMode ? (
+                            <input
+                              type="url"
+                              name="website"
+                              value={formData.website}
+                              onChange={handleInputChange}
+                              placeholder="Enter website URL"
+                              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                            />
+                          ) : (
+                            <span>{formData.website}</span>
+                          )}
+                        </div>
+                        <div className="flex items-start">
+                          <MapPin className="h-5 w-5 text-gray-400 mr-2 mt-1" />
+                          {isEditMode ? (
+                            <div className="flex-1 space-y-2">
+                              <input
+                                type="text"
+                                name="address"
+                                value={formData.address}
+                                onChange={handleInputChange}
+                                placeholder="Enter address"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                              />
+                              <div className="grid grid-cols-2 gap-2">
+                                <input
+                                  type="text"
+                                  name="city"
+                                  value={formData.city}
+                                  onChange={handleInputChange}
+                                  placeholder="City"
+                                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                />
+                                <input
+                                  type="text"
+                                  name="country"
+                                  value={formData.country}
+                                  onChange={handleInputChange}
+                                  placeholder="Country"
+                                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span>{formData.address}, {formData.city}, {formData.country}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Key Personnel */}
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-semibold">Key Personnel</h3>
+                  {hasPermission('employees', 'write') && (
+                    <button
+                      onClick={() => setIsAddEmployeeModalOpen(true)}
+                      className="px-4 py-2 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors flex items-center space-x-2"
+                    >
+                      <Plus className="h-5 w-5" />
+                      <span>Add Team Member</span>
+                    </button>
+                  )}
+                </div>
+                
+                {employeesLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="h-6 w-6 animate-spin text-primary-600" />
+                    <span className="ml-2 text-gray-600">Loading employees...</span>
+                  </div>
+                ) : employeesError ? (
+                  <div className="text-center py-8">
+                    <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                    <p className="text-red-600">Failed to load employees</p>
+                    <p className="text-sm text-gray-500">{employeesError}</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {members.map((employee) => (
+                      <div key={employee.profile_id} className="bg-white p-6 rounded-xl border border-secondary-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex justify-between mb-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            employee.member_status === 'active' ? 'bg-green-100 text-green-800' :
+                            employee.member_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {employee.member_status}
+                          </span>
+                          {hasPermission('employees', 'delete') && (
+                            <div className="flex space-x-1">
+                              <button
+                                onClick={() => handleEditEmployee(employee)}
+                                className="p-1 text-blue-500 hover:bg-blue-50 rounded-full"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleRemoveEmployee(employee.profile_id)}
+                                className="p-1 text-red-500 hover:bg-red-50 rounded-full"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-center text-center mb-4">
+                          <img
+                            src={employee.profile_image_url || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400'}
+                            alt={employee.full_name}
+                            className="w-24 h-24 rounded-full object-cover mb-3"
+                          />
+                          <h4 className="text-lg font-semibold">{employee.full_name}</h4>
+                          <p className="text-secondary-600">{employee.job_position}</p>
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs mt-1">
+                            {employee.role_name}
+                          </span>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                          {employee.email && (
+                            <div className="flex items-center justify-center">
+                              <Mail className="h-4 w-4 text-secondary-400 mr-2" />
+                              <span>{employee.email}</span>
+                            </div>
+                          )}
+                          {employee.phone && (
+                            <div className="flex items-center justify-center">
+                              <Phone className="h-4 w-4 text-secondary-400 mr-2" />
+                              <span>{employee.phone}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-center">
+                            <Briefcase className="h-4 w-4 text-secondary-400 mr-2" />
+                            <span>{employee.years_experience} years experience</span>
+                          </div>
+                        </div>
+                        {employee.expertise && employee.expertise.length > 0 && (
+                          <div className="mt-4">
+                            <div className="flex flex-wrap gap-2 justify-center">
+                              {employee.expertise.map((skill, index) => (
+                                <span key={index} className="px-2 py-1 bg-primary-50 text-primary-700 rounded-full text-xs">
+                                  {skill}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {hasPermission('employees', 'write') && (
+                      <button
+                        onClick={() => setIsAddEmployeeModalOpen(true)}
+                        className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-secondary-200 rounded-xl hover:border-primary-500 hover:bg-primary-50 transition-colors"
+                      >
+                        <Plus className="h-8 w-8 text-secondary-400 mb-2" />
+                        <span className="text-secondary-600">Add Team Member</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Add/Edit Employee Modal */}
+              {(isAddEmployeeModalOpen || isEditEmployeeModalOpen) && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-xl font-semibold">
+                        {isEditEmployeeModalOpen ? 'Edit Team Member' : 'Add Team Member'}
+                      </h3>
+                      <button
+                        onClick={() => {
+                          setIsAddEmployeeModalOpen(false);
+                          setIsEditEmployeeModalOpen(false);
+                          setEditingEmployee(null);
+                          setNewEmployee({
+                            full_name: '',
+                            job_position: '',
+                            email: '',
+                            phone: '',
+                            years_experience: 0,
+                            expertise: [],
+                            role_name: 'employee'
+                          });
+                        }}
+                        className="p-2 hover:bg-secondary-100 rounded-lg"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-secondary-700 mb-1">
+                          Full Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={newEmployee.full_name}
+                          onChange={(e) => setNewEmployee({ ...newEmployee, full_name: e.target.value })}
+                          className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          placeholder="Enter full name"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-secondary-700 mb-1">
+                          Position *
+                        </label>
+                        <input
+                          type="text"
+                          value={newEmployee.job_position}
+                          onChange={(e) => setNewEmployee({ ...newEmployee, job_position: e.target.value })}
+                          className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          placeholder="Enter position"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-secondary-700 mb-1">
+                          Role *
+                        </label>
+                        <select
+                          value={newEmployee.role_name}
+                          onChange={(e) => setNewEmployee({ ...newEmployee, role_name: e.target.value })}
+                          className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          required
+                        >
+                          {roles.map((role) => (
+                            <option key={role.id} value={role.name}>
+                              {role.display_name}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-secondary-500 mt-1">
+                          Role determines access permissions in the portal
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-secondary-700 mb-1">
+                            Email
+                          </label>
+                          <input
+                            type="email"
+                            value={newEmployee.email}
+                            onChange={(e) => setNewEmployee({ ...newEmployee, email: e.target.value })}
+                            className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                            placeholder="Enter email"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-secondary-700 mb-1">
+                            Phone
+                          </label>
+                          <input
+                            type="tel"
+                            value={newEmployee.phone}
+                            onChange={(e) => setNewEmployee({ ...newEmployee, phone: e.target.value })}
+                            className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                            placeholder="Enter phone number"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-secondary-700 mb-1">
+                          Years of Experience *
+                        </label>
+                        <input
+                          type="number"
+                          value={newEmployee.years_experience}
+                          onChange={(e) => setNewEmployee({ ...newEmployee, years_experience: parseInt(e.target.value) || 0 })}
+                          className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          placeholder="Enter years of experience"
+                          min="0"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-secondary-700 mb-1">
+                          Expertise (comma-separated)
+                        </label>
+                        <input
+                          type="text"
+                          value={(newEmployee.expertise || []).join(', ')}
+                          onChange={(e) => setNewEmployee({ 
+                            ...newEmployee, 
+                            expertise: e.target.value.split(',').map(item => item.trim()).filter(Boolean)
+                          })}
+                          className="w-full px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          placeholder="E.g. Gas Systems, Engineering, Safety"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end space-x-3 mt-6">
+                      <button
+                        onClick={() => {
+                          setIsAddEmployeeModalOpen(false);
+                          setIsEditEmployeeModalOpen(false);
+                          setEditingEmployee(null);
+                          setNewEmployee({
+                            full_name: '',
+                            job_position: '',
+                            email: '',
+                            phone: '',
+                            years_experience: 0,
+                            expertise: [],
+                            role_name: 'employee'
+                          });
+                        }}
+                        className="px-4 py-2 text-secondary-700 bg-secondary-100 rounded-lg hover:bg-secondary-200 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={isEditEmployeeModalOpen ? handleUpdateEmployee : handleAddEmployee}
+                        className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                      >
+                        {isEditEmployeeModalOpen ? 'Update Employee' : 'Add Employee'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {activeTab === 'subscription' && renderSubscriptionPlans()}
-          {activeTab === 'certifications' && renderCertifications()}
-          {activeTab === 'performance' && renderPerformance()}
-          {activeTab === 'compliance' && renderCompliance()}
+          {activeTab === 'certifications' && (
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold">Certifications & Standards</h3>
+                <button
+                  onClick={() => setIsAddCertificationModalOpen(true)}
+                  className="px-4 py-2 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors flex items-center space-x-2"
+                >
+                  <Plus className="h-5 w-5" />
+                  <span>Add Certification</span>
+                </button>
+              </div>
+
+              {certificationsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="h-6 w-6 animate-spin text-primary-600" />
+                  <span className="ml-2 text-gray-600">Loading certifications...</span>
+                </div>
+              ) : certificationsError ? (
+                <div className="text-center py-8">
+                  <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                  <p className="text-red-600">Failed to load certifications</p>
+                  <p className="text-sm text-gray-500">{certificationsError}</p>
+                </div>
+              ) : certifications.length === 0 ? (
+                <div className="text-center py-12">
+                  <Award className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No certifications yet</h3>
+                  <p className="text-gray-600 mb-6">Add your first certification to showcase your company's standards and compliance.</p>
+                  <button
+                    onClick={() => setIsAddCertificationModalOpen(true)}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                  >
+                    Add First Certification
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {certifications.map((certification) => (
+                    <div key={certification.id} className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center space-x-3">
+                          {getCertificationTypeIcon(certification.certification_type)}
+                          <div>
+                            <h4 className="text-lg font-semibold text-gray-900">{certification.name}</h4>
+                            <p className="text-sm text-gray-600">{certification.issuer}</p>
+                          </div>
+                        </div>
+                        <div className="flex space-x-1">
+                          <button
+                            onClick={() => handleEditCertification(certification)}
+                            className="p-1 text-blue-500 hover:bg-blue-50 rounded-full"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCertification(certification.id)}
+                            className="p-1 text-red-500 hover:bg-red-50 rounded-full"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getCertificationStatusColor(certification.status)}`}>
+                            {getStatusDisplayName(certification.status)}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {getCertificationTypeDisplayName(certification.certification_type)}
+                          </span>
+                        </div>
+
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-600">Issue Date:</span>
+                            <span className="font-medium">{new Date(certification.issue_date).toLocaleDateString()}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-600">Expiry Date:</span>
+                            <span className={`font-medium ${
+                              isExpired(certification) ? 'text-red-600' :
+                              isExpiringSoon(certification) ? 'text-yellow-600' :
+                              'text-gray-900'
+                            }`}>
+                              {new Date(certification.expiry_date).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+
+                        {certification.description && (
+                          <p className="text-sm text-gray-600 mt-3">{certification.description}</p>
+                        )}
+
+                        {certification.document_url && (
+                          <div className="mt-4">
+                            <a
+                              href={certification.document_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center space-x-2 text-primary-600 hover:text-primary-700 text-sm"
+                            >
+                              <FileText className="h-4 w-4" />
+                              <span>View Document</span>
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </div>
+                        )}
+
+                        {(isExpired(certification) || isExpiringSoon(certification)) && (
+                          <div className={`mt-3 p-2 rounded-lg text-xs ${
+                            isExpired(certification) 
+                              ? 'bg-red-50 text-red-700 border border-red-200'
+                              : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                          }`}>
+                            {isExpired(certification) 
+                              ? '⚠️ This certification has expired'
+                              : '⏰ This certification expires soon'
+                            }
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add/Edit Certification Modal */}
+              {(isAddCertificationModalOpen || isEditCertificationModalOpen) && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-xl font-semibold">
+                        {isEditCertificationModalOpen ? 'Edit Certification' : 'Add Certification'}
+                      </h3>
+                      <button
+                        onClick={() => {
+                          setIsAddCertificationModalOpen(false);
+                          setIsEditCertificationModalOpen(false);
+                          setEditingCertification(null);
+                          resetCertificationForm();
+                        }}
+                        className="p-2 hover:bg-gray-100 rounded-lg"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Certification Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={newCertification.name}
+                          onChange={(e) => setNewCertification({ ...newCertification, name: e.target.value })}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          placeholder="e.g., ISO 9001:2015"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Issuing Organization *
+                        </label>
+                        <input
+                          type="text"
+                          value={newCertification.issuer}
+                          onChange={(e) => setNewCertification({ ...newCertification, issuer: e.target.value })}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          placeholder="e.g., International Organization for Standardization"
+                          required
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Issue Date *
+                          </label>
+                          <input
+                            type="date"
+                            value={newCertification.issue_date}
+                            onChange={(e) => setNewCertification({ ...newCertification, issue_date: e.target.value })}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Expiry Date *
+                          </label>
+                          <input
+                            type="date"
+                            value={newCertification.expiry_date}
+                            onChange={(e) => setNewCertification({ ...newCertification, expiry_date: e.target.value })}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Certification Type
+                          </label>
+                          <select
+                            value={newCertification.certification_type}
+                            onChange={(e) => setNewCertification({ ...newCertification, certification_type: e.target.value as any })}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          >
+                            <option value="iso">ISO Standard</option>
+                            <option value="environmental">Environmental</option>
+                            <option value="safety">Safety</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Status
+                          </label>
+                          <select
+                            value={newCertification.status}
+                            onChange={(e) => setNewCertification({ ...newCertification, status: e.target.value as any })}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          >
+                            <option value="active">Active</option>
+                            <option value="pending">Pending</option>
+                            <option value="expired">Expired</option>
+                            <option value="revoked">Revoked</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Description
+                        </label>
+                        <textarea
+                          value={newCertification.description}
+                          onChange={(e) => setNewCertification({ ...newCertification, description: e.target.value })}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          placeholder="Brief description of the certification"
+                          rows={3}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Document Upload
+                        </label>
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-primary-500 transition-colors">
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                            onChange={handleDocumentUpload}
+                            className="hidden"
+                            id="document-upload"
+                            disabled={uploadingDocument}
+                          />
+                          <label htmlFor="document-upload" className="cursor-pointer">
+                            {uploadingDocument ? (
+                              <div className="flex items-center justify-center">
+                                <RefreshCw className="h-5 w-5 animate-spin text-primary-600 mr-2" />
+                                <span className="text-sm text-gray-600">Uploading...</span>
+                              </div>
+                            ) : (
+                              <>
+                                <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                                <p className="text-sm text-gray-600">
+                                  Drag and drop file here or click to browse
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  PDF, DOC, DOCX, JPG, PNG (max 10MB)
+                                </p>
+                              </>
+                            )}
+                          </label>
+                        </div>
+                        {newCertification.document_url && (
+                          <div className="mt-2 flex items-center space-x-2 text-sm text-green-600">
+                            <CheckCircle className="h-4 w-4" />
+                            <span>Document uploaded successfully</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end space-x-3 mt-6">
+                      <button
+                        onClick={() => {
+                          setIsAddCertificationModalOpen(false);
+                          setIsEditCertificationModalOpen(false);
+                          setEditingCertification(null);
+                          resetCertificationForm();
+                        }}
+                        className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={isEditCertificationModalOpen ? handleUpdateCertification : handleAddCertification}
+                        className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                      >
+                        {isEditCertificationModalOpen ? 'Update Certification' : 'Add Certification'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {activeTab === 'performance' && (
+            <div className="space-y-8">
+              {/* Performance Header */}
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-semibold">Performance Metrics</h3>
+                  <button
+                    onClick={refreshMetrics}
+                    disabled={performanceLoading}
+                    className="px-4 py-2 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors flex items-center space-x-2 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-5 w-5 ${performanceLoading ? 'animate-spin' : ''}`} />
+                    <span>Refresh Metrics</span>
+                  </button>
+                </div>
+
+                {performanceLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="h-6 w-6 animate-spin text-primary-600" />
+                    <span className="ml-2 text-gray-600">Loading performance metrics...</span>
+                  </div>
+                ) : performanceError ? (
+                  <div className="text-center py-8">
+                    <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                    <p className="text-red-600">Failed to load performance metrics</p>
+                    <p className="text-sm text-gray-500">{performanceError}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-8">
+                    {/* Key Performance Indicators */}
+                    <div>
+                      <h4 className="text-lg font-semibold mb-4">Key Performance Indicators</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {getMetricsByCategory('kpi').map((metric) => (
+                          <div key={metric.id} className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center space-x-3">
+                                <div className={`p-2 rounded-lg ${getMetricStatusColor(metric.status)}`}>
+                                  {getMetricIcon(metric.name)}
+                                </div>
+                                <div>
+                                  <h5 className="font-medium text-gray-900">{metric.name}</h5>
+                                  <p className="text-sm text-gray-600">{metric.description}</p>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-2xl font-bold text-gray-900">
+                                  {metric.value}{metric.unit}
+                                </span>
+                                {metric.trend !== 0 && (
+                                  <div className={`flex items-center space-x-1 ${
+                                    metric.trend > 0 ? 'text-green-600' : 'text-red-600'
+                                  }`}>
+                                    {metric.trend > 0 ? (
+                                      <ArrowUpRight className="h-4 w-4" />
+                                    ) : (
+                                      <ArrowDownRight className="h-4 w-4" />
+                                    )}
+                                    <span className="text-sm font-medium">
+                                      {Math.abs(metric.trend)}{metric.unit}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                              {metric.target && (
+                                <div className="text-sm text-gray-600">
+                                  Target: {metric.target}{metric.unit}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Operational Performance */}
+                    <div>
+                      <h4 className="text-lg font-semibold mb-4">Operational Performance</h4>
+                      <div className="bg-white rounded-xl border border-gray-200 p-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          {getMetricsByCategory('operational').map((metric) => (
+                            <div key={metric.id} className="text-center">
+                              <div className="flex items-center justify-center mb-2">
+                                <div className={`p-3 rounded-full ${getMetricStatusColor(metric.status)} bg-opacity-10`}>
+                                  {getMetricIcon(metric.name)}
+                                </div>
+                              </div>
+                              <h5 className="font-medium text-gray-900 mb-1">{metric.name}</h5>
+                              <div className="text-2xl font-bold text-gray-900 mb-1">
+                                {metric.value}{metric.unit}
+                              </div>
+                              <p className="text-sm text-gray-600">{metric.description}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Pricing Competitiveness */}
+                    <div>
+                      <h4 className="text-lg font-semibold mb-4">Pricing Competitiveness</h4>
+                      <div className="bg-white rounded-xl border border-gray-200 p-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          {getMetricsByCategory('pricing').map((metric) => (
+                            <div key={metric.id} className="text-center">
+                              <h5 className="font-medium text-gray-900 mb-2">{metric.name}</h5>
+                              <div className="text-2xl font-bold text-gray-900 mb-1">
+                                {metric.id === 'price_perception' ? metric.description : `${metric.value}${metric.unit}`}
+                              </div>
+                              {metric.id === 'price_perception' && (
+                                <div className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                  Competitive
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Market Share */}
+                    <div>
+                      <h4 className="text-lg font-semibold mb-4">Market Share</h4>
+                      <div className="bg-white rounded-xl border border-gray-200 p-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          {getMetricsByCategory('market').map((metric) => (
+                            <div key={metric.id} className="text-center">
+                              <h5 className="font-medium text-gray-900 mb-2">{metric.name}</h5>
+                              <div className="text-2xl font-bold text-gray-900 mb-1">
+                                {metric.id === 'market_position' ? metric.description : `${metric.value}${metric.unit}`}
+                              </div>
+                              {metric.id === 'yoy_growth' && metric.trend !== 0 && (
+                                <div className={`flex items-center justify-center space-x-1 ${
+                                  metric.trend > 0 ? 'text-green-600' : 'text-red-600'
+                                }`}>
+                                  {metric.trend > 0 ? (
+                                    <ArrowUpRight className="h-4 w-4" />
+                                  ) : (
+                                    <ArrowDownRight className="h-4 w-4" />
+                                  )}
+                                  <span className="text-sm">
+                                    {metric.trend > 0 ? '+' : ''}{metric.trend}%
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Flexibility & Customization */}
+                    <div>
+                      <h4 className="text-lg font-semibold mb-4">Flexibility & Customization</h4>
+                      <div className="bg-white rounded-xl border border-gray-200 p-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          {getMetricsByCategory('flexibility').map((metric) => (
+                            <div key={metric.id} className="text-center">
+                              <div className="flex items-center justify-center mb-3">
+                                <div className="p-3 rounded-full bg-green-100">
+                                  <CheckCircle className="h-6 w-6 text-green-600" />
+                                </div>
+                              </div>
+                              <h5 className="font-medium text-gray-900 mb-1">{metric.name}</h5>
+                              <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                                {metric.description}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Performance Insights */}
+                    <div className="bg-blue-50 rounded-xl p-6">
+                      <h4 className="text-lg font-semibold text-blue-900 mb-4">Performance Insights</h4>
+                      <div className="space-y-3">
+                        <div className="flex items-start space-x-3">
+                          <div className="p-2 bg-blue-100 rounded-lg">
+                            <Lightbulb className="h-5 w-5 text-blue-600" />
+                          </div>
+                          <div>
+                            <h5 className="font-medium text-blue-900">Getting Started</h5>
+                            <p className="text-blue-700 text-sm">
+                              Your metrics will improve as you process more orders and build your customer base. 
+                              Focus on maintaining high quality service to establish strong performance baselines.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-start space-x-3">
+                          <div className="p-2 bg-blue-100 rounded-lg">
+                            <TrendingUp className="h-5 w-5 text-blue-600" />
+                          </div>
+                          <div>
+                            <h5 className="font-medium text-blue-900">Growth Opportunities</h5>
+                            <p className="text-blue-700 text-sm">
+                              Consider adding more products to your catalog and optimizing your delivery processes 
+                              to improve your market position and customer satisfaction.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {activeTab === 'compliance' && (
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h3 className="text-xl font-semibold mb-6">Compliance & Risk Management</h3>
+              <p className="text-gray-600">Compliance tracking coming soon...</p>
+            </div>
+          )}
         </>
       )}
     </div>
