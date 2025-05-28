@@ -19,98 +19,30 @@ import {
   XCircle,
   ChevronDown,
 } from 'lucide-react';
-
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: 'order' | 'delivery' | 'alert' | 'system' | 'payment';
-  status: 'unread' | 'read';
-  timestamp: string;
-  priority: 'high' | 'medium' | 'low';
-  actionRequired?: boolean;
-  link?: string;
-}
-
-const mockNotifications: Notification[] = [
-  {
-    id: '1',
-    title: 'New Order Received',
-    message: 'Order #ORD-2024-001 has been placed for Industrial Gas Tank x5',
-    type: 'order',
-    status: 'unread',
-    timestamp: '2024-03-19 10:30:00',
-    priority: 'high',
-    actionRequired: true,
-    link: '/dashboard/orders',
-  },
-  {
-    id: '2',
-    title: 'Delivery Update',
-    message: 'Shipment TRK-2024-001 has reached Riyadh checkpoint',
-    type: 'delivery',
-    status: 'unread',
-    timestamp: '2024-03-19 09:45:00',
-    priority: 'medium',
-    link: '/dashboard/orders/tracking',
-  },
-  {
-    id: '3',
-    title: 'Payment Received',
-    message: 'Payment of $2,499.95 received for Order #ORD-2024-001',
-    type: 'payment',
-    status: 'read',
-    timestamp: '2024-03-19 09:30:00',
-    priority: 'medium',
-    link: '/dashboard/finance/transactions',
-  },
-  {
-    id: '4',
-    title: 'Low Stock Alert',
-    message: 'Industrial Gas Tank stock level is below threshold (5 units remaining)',
-    type: 'alert',
-    status: 'unread',
-    timestamp: '2024-03-19 08:15:00',
-    priority: 'high',
-    actionRequired: true,
-    link: '/dashboard/setup/products',
-  },
-  {
-    id: '5',
-    title: 'System Maintenance',
-    message: 'Scheduled maintenance on March 20, 2024, from 02:00 AM to 04:00 AM GMT',
-    type: 'system',
-    status: 'read',
-    timestamp: '2024-03-18 15:00:00',
-    priority: 'low',
-  },
-];
+import { useNotifications, Notification } from '../lib/hooks/useNotifications';
 
 const Notifications = () => {
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+  const {
+    notifications,
+    loading,
+    error,
+    unreadCount,
+    markAsRead,
+    markAllAsRead,
+    refresh,
+  } = useNotifications();
+
   const [filterStatus, setFilterStatus] = useState<'all' | 'unread' | 'read'>('all');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
+    await refresh();
     setTimeout(() => {
       setIsRefreshing(false);
     }, 1000);
-  };
-
-  const markAsRead = (id: string) => {
-    setNotifications(notifications.map(notification =>
-      notification.id === id ? { ...notification, status: 'read' } : notification
-    ));
-  };
-
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(notification => ({
-      ...notification,
-      status: 'read'
-    })));
   };
 
   const getTypeIcon = (type: Notification['type']) => {
@@ -125,6 +57,12 @@ const Notifications = () => {
         return <Settings className="h-5 w-5" />;
       case 'payment':
         return <DollarSign className="h-5 w-5" />;
+      case 'product':
+        return <Package className="h-5 w-5" />;
+      case 'customer':
+        return <User className="h-5 w-5" />;
+      case 'support':
+        return <Bell className="h-5 w-5" />;
       default:
         return <Bell className="h-5 w-5" />;
     }
@@ -142,6 +80,12 @@ const Notifications = () => {
         return 'text-purple-600 bg-purple-50';
       case 'payment':
         return 'text-yellow-600 bg-yellow-50';
+      case 'product':
+        return 'text-indigo-600 bg-indigo-50';
+      case 'customer':
+        return 'text-teal-600 bg-teal-50';
+      case 'support':
+        return 'text-orange-600 bg-orange-50';
       default:
         return 'text-gray-600 bg-gray-50';
     }
@@ -149,6 +93,8 @@ const Notifications = () => {
 
   const getPriorityColor = (priority: Notification['priority']) => {
     switch (priority) {
+      case 'urgent':
+        return 'text-red-700 bg-red-100';
       case 'high':
         return 'text-red-600 bg-red-50';
       case 'medium':
@@ -167,7 +113,43 @@ const Notifications = () => {
     return true;
   });
 
-  const unreadCount = notifications.filter(n => n.status === 'unread').length;
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="animate-pulse">
+          <div className="h-8 bg-secondary-200 rounded w-1/4 mb-4"></div>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-secondary-100">
+            <div className="space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center space-x-4">
+                  <div className="w-12 h-12 bg-secondary-200 rounded-lg"></div>
+                  <div className="flex-1">
+                    <div className="h-4 bg-secondary-200 rounded w-3/4 mb-2"></div>
+                    <div className="h-3 bg-secondary-200 rounded w-1/2"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+        <h3 className="text-lg font-semibold text-red-800 mb-2">Error Loading Notifications</h3>
+        <p className="text-red-600">{error}</p>
+        <button
+          onClick={handleRefresh}
+          className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -235,6 +217,9 @@ const Notifications = () => {
             <option value="alert">Alerts</option>
             <option value="system">System</option>
             <option value="payment">Payments</option>
+            <option value="product">Products</option>
+            <option value="customer">Customers</option>
+            <option value="support">Support</option>
           </select>
           <select
             value={filterPriority}
@@ -242,6 +227,7 @@ const Notifications = () => {
             className="px-4 py-2 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
           >
             <option value="all">All Priority</option>
+            <option value="urgent">Urgent</option>
             <option value="high">High</option>
             <option value="medium">Medium</option>
             <option value="low">Low</option>
@@ -333,7 +319,10 @@ const Notifications = () => {
             <Bell className="h-12 w-12 text-secondary-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-secondary-900 mb-2">No notifications found</h3>
             <p className="text-secondary-600">
-              There are no notifications matching your current filters
+              {notifications.length === 0 
+                ? "You don't have any notifications yet. When you receive orders, updates, or alerts, they'll appear here."
+                : "There are no notifications matching your current filters"
+              }
             </p>
           </div>
         )}

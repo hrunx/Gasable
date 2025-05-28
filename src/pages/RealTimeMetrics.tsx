@@ -1,31 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  TrendingUp,
-  TrendingDown,
   Package,
   Truck,
-  DollarSign,
   Clock,
   Users,
   AlertCircle,
-  CheckCircle,
-  XCircle,
   RefreshCw,
   Filter,
-  Calendar,
-  Search,
   MapPin,
   ArrowUpRight,
   ArrowDownRight,
-  Bell,
   Download,
-  Zap,
   Battery,
   Gauge,
   Thermometer,
   Droplets,
-  Wind,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -37,118 +27,36 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
 } from 'recharts';
 import {
   ComposableMap,
   Geographies,
   Geography,
   Marker,
-  Line as MapLine,
 } from "react-simple-maps";
+import { useRealTimeMetrics, LiveOrder, LiveMetric } from '../lib/hooks/useRealTimeMetrics';
 
 // Updated to use a more reliable CDN source
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
-interface LiveOrder {
-  id: string;
-  customer: string;
-  product: string;
-  status: 'pending' | 'processing' | 'in_transit' | 'delivered' | 'cancelled';
-  amount: number;
-  location: {
-    name: string;
-    coordinates: [number, number];
-  };
-  timestamp: string;
-  eta: string;
-}
-
-interface LiveMetric {
-  name: string;
-  value: number;
-  unit: string;
-  trend: number;
-  status: 'normal' | 'warning' | 'critical';
-}
-
 const RealTimeMetrics = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedTimeframe, setSelectedTimeframe] = useState('1h');
-  const [activeTab, setActiveTab] = useState('overview');
 
-  // Mock live orders
-  const [liveOrders] = useState<LiveOrder[]>([
-    {
-      id: 'ORD-001',
-      customer: 'Acme Industries',
-      product: 'Industrial Gas Tank',
-      status: 'in_transit',
-      amount: 2499.95,
-      location: {
-        name: 'Riyadh',
-        coordinates: [46.6753, 24.7136],
-      },
-      timestamp: new Date().toISOString(),
-      eta: '2 hours',
-    },
-    // Add more mock orders...
-  ]);
+  const {
+    quickStats,
+    liveOrders,
+    liveMetrics,
+    performanceData,
+    deliveryLocations,
+    loading,
+    error,
+    refresh,
+  } = useRealTimeMetrics(selectedTimeframe);
 
-  // Mock live metrics
-  const [liveMetrics] = useState<LiveMetric[]>([
-    {
-      name: 'Tank Pressure',
-      value: 2.4,
-      unit: 'bar',
-      trend: 0.2,
-      status: 'normal',
-    },
-    {
-      name: 'Temperature',
-      value: 23,
-      unit: '°C',
-      trend: -1.5,
-      status: 'normal',
-    },
-    {
-      name: 'Flow Rate',
-      value: 12.3,
-      unit: 'L/min',
-      trend: 0.5,
-      status: 'warning',
-    },
-    {
-      name: 'Battery Level',
-      value: 85,
-      unit: '%',
-      trend: -0.3,
-      status: 'normal',
-    },
-  ]);
-
-  const performanceData = [
-    { time: '09:00', orders: 45, deliveries: 38 },
-    { time: '10:00', orders: 52, deliveries: 43 },
-    { time: '11:00', orders: 48, deliveries: 41 },
-    { time: '12:00', orders: 61, deliveries: 52 },
-    { time: '13:00', orders: 55, deliveries: 48 },
-    { time: '14:00', orders: 67, deliveries: 59 },
-    { time: '15:00', orders: 60, deliveries: 51 },
-  ];
-
-  const deliveryLocations = [
-    { name: "Riyadh Hub", coordinates: [46.6753, 24.7136], deliveries: 45 },
-    { name: "Jeddah Port", coordinates: [39.1925, 21.4858], deliveries: 32 },
-    { name: "Dammam Center", coordinates: [50.1033, 26.4207], deliveries: 28 },
-  ];
-
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
+    await refresh();
     setTimeout(() => {
       setIsRefreshing(false);
     }, 1000);
@@ -185,6 +93,36 @@ const RealTimeMetrics = () => {
         return <Gauge className="h-6 w-6" />;
     }
   };
+
+  const formatTrend = (trend: number) => {
+    const isPositive = trend >= 0;
+    return {
+      value: Math.abs(trend).toFixed(1),
+      isPositive,
+      color: isPositive ? 'text-green-600' : 'text-red-600',
+      icon: isPositive ? ArrowUpRight : ArrowDownRight,
+    };
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <span className="ml-2 text-secondary-600">Loading metrics...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="flex items-center">
+          <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
+          <span className="text-red-800">Error loading metrics: {error}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -238,9 +176,12 @@ const RealTimeMetrics = () => {
           >
             <div className="flex items-center justify-between mb-2">
               <Package className="h-6 w-6 text-blue-600" />
-              <span className="text-sm text-green-600">+12.5%</span>
+              <span className={`text-sm ${formatTrend(quickStats?.trends.activeOrders || 0).color}`}>
+                {formatTrend(quickStats?.trends.activeOrders || 0).isPositive ? '+' : ''}
+                {formatTrend(quickStats?.trends.activeOrders || 0).value}%
+              </span>
             </div>
-            <h3 className="text-2xl font-bold text-secondary-900">156</h3>
+            <h3 className="text-2xl font-bold text-secondary-900">{quickStats?.activeOrders || 0}</h3>
             <p className="text-secondary-600">Active Orders</p>
           </motion.div>
 
@@ -252,9 +193,12 @@ const RealTimeMetrics = () => {
           >
             <div className="flex items-center justify-between mb-2">
               <Truck className="h-6 w-6 text-green-600" />
-              <span className="text-sm text-green-600">+8.2%</span>
+              <span className={`text-sm ${formatTrend(quickStats?.trends.inTransit || 0).color}`}>
+                {formatTrend(quickStats?.trends.inTransit || 0).isPositive ? '+' : ''}
+                {formatTrend(quickStats?.trends.inTransit || 0).value}%
+              </span>
             </div>
-            <h3 className="text-2xl font-bold text-secondary-900">42</h3>
+            <h3 className="text-2xl font-bold text-secondary-900">{quickStats?.inTransit || 0}</h3>
             <p className="text-secondary-600">In Transit</p>
           </motion.div>
 
@@ -266,9 +210,14 @@ const RealTimeMetrics = () => {
           >
             <div className="flex items-center justify-between mb-2">
               <Clock className="h-6 w-6 text-yellow-600" />
-              <span className="text-sm text-yellow-600">95.8%</span>
+              <span className={`text-sm ${formatTrend(quickStats?.trends.onTimeDelivery || 0).color}`}>
+                {formatTrend(quickStats?.trends.onTimeDelivery || 0).isPositive ? '+' : ''}
+                {formatTrend(quickStats?.trends.onTimeDelivery || 0).value}%
+              </span>
             </div>
-            <h3 className="text-2xl font-bold text-secondary-900">98.5%</h3>
+            <h3 className="text-2xl font-bold text-secondary-900">
+              {quickStats?.onTimeDelivery ? `${quickStats.onTimeDelivery.toFixed(1)}%` : '0%'}
+            </h3>
             <p className="text-secondary-600">On-Time Delivery</p>
           </motion.div>
 
@@ -280,9 +229,12 @@ const RealTimeMetrics = () => {
           >
             <div className="flex items-center justify-between mb-2">
               <Users className="h-6 w-6 text-purple-600" />
-              <span className="text-sm text-green-600">+15.8%</span>
+              <span className={`text-sm ${formatTrend(quickStats?.trends.activeCustomers || 0).color}`}>
+                {formatTrend(quickStats?.trends.activeCustomers || 0).isPositive ? '+' : ''}
+                {formatTrend(quickStats?.trends.activeCustomers || 0).value}%
+              </span>
             </div>
-            <h3 className="text-2xl font-bold text-secondary-900">2,648</h3>
+            <h3 className="text-2xl font-bold text-secondary-900">{quickStats?.activeCustomers || 0}</h3>
             <p className="text-secondary-600">Active Customers</p>
           </motion.div>
         </div>
@@ -361,30 +313,38 @@ const RealTimeMetrics = () => {
         <div className="bg-white p-6 rounded-xl shadow-sm border border-secondary-100">
           <h2 className="text-lg font-semibold mb-6">Live Orders</h2>
           <div className="space-y-4">
-            {liveOrders.map((order) => (
-              <div
-                key={order.id}
-                className="p-4 bg-secondary-50 rounded-lg border border-secondary-100"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">{order.id}</span>
-                  <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(order.status)}`}>
-                    {order.status.replace('_', ' ').charAt(0).toUpperCase() + order.status.slice(1)}
-                  </span>
-                </div>
-                <p className="text-sm text-secondary-600 mb-2">{order.product}</p>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center text-secondary-600">
-                    <MapPin className="h-4 w-4 mr-1" />
-                    {order.location.name}
-                  </span>
-                  <span className="flex items-center text-secondary-600">
-                    <Clock className="h-4 w-4 mr-1" />
-                    ETA: {order.eta}
-                  </span>
-                </div>
+            {liveOrders.length === 0 ? (
+              <div className="text-center py-8 text-secondary-500">
+                <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>No active orders</p>
               </div>
-            ))}
+            ) : (
+              liveOrders.map((order) => (
+                <div
+                  key={order.id}
+                  className="p-4 bg-secondary-50 rounded-lg border border-secondary-100"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium">{order.order_number}</span>
+                    <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(order.status)}`}>
+                      {order.status.replace('_', ' ').charAt(0).toUpperCase() + order.status.slice(1)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-secondary-600 mb-2">{order.product_name}</p>
+                  <p className="text-sm text-secondary-600 mb-2">{order.customer_name}</p>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="flex items-center text-secondary-600">
+                      <MapPin className="h-4 w-4 mr-1" />
+                      {order.location.name}
+                    </span>
+                    <span className="flex items-center text-secondary-600">
+                      <Clock className="h-4 w-4 mr-1" />
+                      ETA: {order.eta}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -411,11 +371,11 @@ const RealTimeMetrics = () => {
                 ) : (
                   <ArrowDownRight className="h-4 w-4 mr-1" />
                 )}
-                {Math.abs(metric.trend)}
+                {Math.abs(metric.trend).toFixed(1)}
               </span>
             </div>
             <h3 className="text-2xl font-bold text-secondary-900 mb-1">
-              {metric.value}{metric.unit}
+              {metric.value.toFixed(1)}{metric.unit}
             </h3>
             <p className="text-secondary-600">{metric.name}</p>
           </motion.div>
