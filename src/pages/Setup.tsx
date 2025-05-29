@@ -43,6 +43,7 @@ import {
   Cell,
   ResponsiveContainer
 } from 'recharts';
+import { useStores } from '../lib/hooks/useStores';
 
 const geoUrl = "https://raw.githubusercontent.com/deldersveld/topojson/master/world-countries.json";
 
@@ -50,68 +51,111 @@ interface Store {
   id: string;
   name: string;
   type: string;
-  location: string;
+  city: string;
+  country: string;
+  address: string;
   status: 'active' | 'pending' | 'rejected';
-  products: number;
-  orders: number;
-  revenue: number;
-  coordinates: [number, number];
-  createdAt: string;
-  offDays: string;
+  store_category: 'physical' | 'cloud';
+  services: {
+    pickup: boolean;
+    delivery: boolean;
+  };
+  created_at: string;
+  coordinates?: [number, number];
+  products?: number;
+  orders?: number;
+  revenue?: number;
 }
+
+// Mock coordinates for map display (temporary until real coordinates are added to database)
+const getStoreCoordinates = (city: string): [number, number] => {
+  const coordinates: Record<string, [number, number]> = {
+    'riyadh': [46.6753, 24.7136],
+    'jeddah': [39.1925, 21.4858],
+    'dammam': [50.1033, 26.4207],
+    'mecca': [39.8579, 21.3891],
+    'medina': [39.6142, 24.4539],
+    'default': [45.0792, 23.8859], // Saudi Arabia center
+  };
+  return coordinates[city.toLowerCase()] || coordinates.default;
+};
 
 const mockStores: Store[] = [
   {
     id: '1',
     name: 'Riyadh Central Hub',
     type: 'Warehouse',
-    location: 'Riyadh',
+    city: 'Riyadh',
+    country: 'Saudi Arabia',
+    address: 'Riyadh',
     status: 'active',
+    store_category: 'physical',
+    services: {
+      pickup: true,
+      delivery: true,
+    },
+    created_at: '2024-03-15',
     products: 12,
     orders: 156,
     revenue: 45000,
     coordinates: [46.6753, 24.7136],
-    createdAt: '2024-03-15',
-    offDays: 'Friday',
   },
   {
     id: '2',
     name: 'Jeddah Port Station',
     type: 'Distribution Center',
-    location: 'Jeddah',
+    city: 'Jeddah',
+    country: 'Saudi Arabia',
+    address: 'Jeddah',
     status: 'active',
+    store_category: 'physical',
+    services: {
+      pickup: true,
+      delivery: true,
+    },
+    created_at: '2024-03-14',
     products: 8,
     orders: 98,
     revenue: 32000,
     coordinates: [39.1925, 21.4858],
-    createdAt: '2024-03-14',
-    offDays: 'Friday, Saturday',
   },
   {
     id: '3',
     name: 'Dammam Industrial',
     type: 'Warehouse',
-    location: 'Dammam',
+    city: 'Dammam',
+    country: 'Saudi Arabia',
+    address: 'Dammam',
     status: 'pending',
+    store_category: 'physical',
+    services: {
+      pickup: true,
+      delivery: true,
+    },
+    created_at: '2024-03-13',
     products: 15,
     orders: 0,
     revenue: 0,
     coordinates: [50.1033, 26.4207],
-    createdAt: '2024-03-13',
-    offDays: 'Friday',
   },
   {
     id: '4',
     name: 'Mecca Retail Store',
     type: 'Retail Store',
-    location: 'Mecca',
+    city: 'Mecca',
+    country: 'Saudi Arabia',
+    address: 'Mecca',
     status: 'rejected',
+    store_category: 'physical',
+    services: {
+      pickup: true,
+      delivery: true,
+    },
+    created_at: '2024-03-12',
     products: 5,
     orders: 0,
     revenue: 0,
     coordinates: [39.8579, 21.3891],
-    createdAt: '2024-03-12',
-    offDays: 'Friday',
   },
 ];
 
@@ -164,14 +208,9 @@ const steps = [
   { icon: <CheckCircle className="h-6 w-6" />, label: 'Go Live', description: 'Active on marketplace' },
 ];
 
-const storeStatusData = [
-  { name: 'Active', value: mockStores.filter(s => s.status === 'active').length, color: '#34D399' },
-  { name: 'Pending', value: mockStores.filter(s => s.status === 'pending').length, color: '#FCD34D' },
-  { name: 'Rejected', value: mockStores.filter(s => s.status === 'rejected').length, color: '#F87171' },
-];
-
 const Setup = () => {
   const navigate = useNavigate();
+  const { stores, stats, loading, error } = useStores();
   const [currentStep, setCurrentStep] = useState(0);
   const [isAddStoreModalOpen, setIsAddStoreModalOpen] = useState(false);
   const [selectedStore, setSelectedStore] = useState<string | null>(null);
@@ -209,6 +248,21 @@ const Setup = () => {
         is24Hours: false,
       }
     }), {}),
+  });
+
+  // Calculate store status data dynamically
+  const storeStatusData = [
+    { name: 'Active', value: stats.activeStores, color: '#34D399' },
+    { name: 'Pending', value: stats.pendingStores, color: '#FCD34D' },
+    { name: 'Rejected', value: stores.filter(s => s.status === 'rejected').length, color: '#F87171' },
+  ];
+
+  // Filter stores based on status and search query
+  const filteredStores = stores.filter(store => {
+    const matchesStatus = filterStatus === 'all' || store.status === filterStatus;
+    const matchesSearch = store.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         store.city.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesStatus && matchesSearch;
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -279,21 +333,6 @@ const Setup = () => {
         return <AlertCircle className="h-5 w-5" />;
     }
   };
-
-  const filteredStores = mockStores.filter(store => {
-    if (filterStatus !== 'all' && store.status !== filterStatus) {
-      return false;
-    }
-    if (searchQuery) {
-      const searchLower = searchQuery.toLowerCase();
-      return (
-        store.name.toLowerCase().includes(searchLower) ||
-        store.location.toLowerCase().includes(searchLower) ||
-        store.type.toLowerCase().includes(searchLower)
-      );
-    }
-    return true;
-  });
 
   const renderAddStoreModal = () => (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -637,7 +676,7 @@ const Setup = () => {
       {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-6">
         <button
-          onClick={() => setIsAddStoreModalOpen(true)}
+          onClick={() => navigate('/setup/add-store')}
           className="p-6 bg-white rounded-xl shadow-sm border border-secondary-100 hover:border-primary-200 transition-all text-left group"
         >
           <div className="flex items-center justify-between mb-4">
@@ -671,7 +710,7 @@ const Setup = () => {
         >
           <div className="flex items-center justify-between mb-2">
             <Store className="h-6 w-6 text-blue-600" />
-            <span className="text-2xl font-bold text-blue-600">{mockStores.length}</span>
+            <span className="text-2xl font-bold text-blue-600">{stores.length}</span>
           </div>
           <p className="text-secondary-600">Total Stores</p>
         </motion.div>
@@ -685,7 +724,7 @@ const Setup = () => {
           <div className="flex items-center justify-between mb-2">
             <CheckCircle2 className="h-6 w-6 text-green-600" />
             <span className="text-2xl font-bold text-green-600">
-              {mockStores.filter(s => s.status === 'active').length}
+              {stats.activeStores}
             </span>
           </div>
           <p className="text-secondary-600">Active Stores</p>
@@ -700,7 +739,7 @@ const Setup = () => {
           <div className="flex items-center justify-between mb-2">
             <Clock className="h-6 w-6 text-yellow-600" />
             <span className="text-2xl font-bold text-yellow-600">
-              {mockStores.filter(s => s.status === 'pending').length}
+              {stats.pendingStores}
             </span>
           </div>
           <p className="text-secondary-600">Pending Stores</p>
@@ -715,7 +754,7 @@ const Setup = () => {
           <div className="flex items-center justify-between mb-2">
             <XCircle className="h-6 w-6 text-red-600" />
             <span className="text-2xl font-bold text-red-600">
-              {mockStores.filter(s => s.status === 'rejected').length}
+              {stores.filter(s => s.status === 'rejected').length}
             </span>
           </div>
           <p className="text-secondary-600">Rejected Stores</p>
@@ -753,19 +792,19 @@ const Setup = () => {
                   ))
                 }
               </Geographies>
-              {mockStores.map((store) => (
-                <Marker key={store.id} coordinates={store.coordinates}>
-                  <circle
-                    r={6}
-                    fill={
-                      store.status === 'active' ? '#34D399' : 
-                      store.status === 'pending' ? '#FCD34D' : '#F87171'
-                    }
-                    stroke="#fff"
-                    strokeWidth={2}
-                  />
-                </Marker>
-              ))}
+              {stores.map((store) => {
+                const coordinates = getStoreCoordinates(store.city);
+                return (
+                  <Marker key={store.id} coordinates={coordinates}>
+                    <circle
+                      r="6"
+                      fill={store.status === 'active' ? '#34D399' : store.status === 'pending' ? '#FCD34D' : '#F87171'}
+                      className="cursor-pointer hover:scale-110 transition-transform"
+                      onClick={() => setSelectedStore(store.id)}
+                    />
+                  </Marker>
+                );
+              })}
             </ComposableMap>
           </div>
         </div>
@@ -851,10 +890,8 @@ const Setup = () => {
               <tr className="bg-secondary-50">
                 <th className="py-4 px-6 text-left font-medium text-secondary-600">Store</th>
                 <th className="py-4 px-6 text-left font-medium text-secondary-600">Type</th>
+                <th className="py-4 px-6 text-left font-medium text-secondary-600">Category</th>
                 <th className="py-4 px-6 text-left font-medium text-secondary-600">Location</th>
-                <th className="py-4 px-6 text-left font-medium text-secondary-600">Products</th>
-                <th className="py-4 px-6 text-left font-medium text-secondary-600">Orders</th>
-                <th className="py-4 px-6 text-left font-medium text-secondary-600">Revenue</th>
                 <th className="py-4 px-6 text-left font-medium text-secondary-600">Status</th>
                 <th className="py-4 px-6 text-left font-medium text-secondary-600">Created</th>
                 <th className="py-4 px-6 text-left font-medium text-secondary-600">Actions</th>
@@ -866,21 +903,27 @@ const Setup = () => {
                   <td className="py-4 px-6 font-medium">{store.name}</td>
                   <td className="py-4 px-6">{store.type}</td>
                   <td className="py-4 px-6">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      store.store_category === 'physical' 
+                        ? 'bg-blue-100 text-blue-800' 
+                        : 'bg-green-100 text-green-800'
+                    }`}>
+                      {store.store_category === 'physical' ? 'Physical' : 'Cloud'}
+                    </span>
+                  </td>
+                  <td className="py-4 px-6">
                     <div className="flex items-center space-x-1">
                       <MapPin className="h-4 w-4 text-secondary-400" />
-                      <span>{store.location}</span>
+                      <span>{store.city}, {store.country}</span>
                     </div>
                   </td>
-                  <td className="py-4 px-6">{store.products}</td>
-                  <td className="py-4 px-6">{store.orders}</td>
-                  <td className="py-4 px-6">${store.revenue.toLocaleString()}</td>
                   <td className="py-4 px-6">
-                    <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${getStatusColor(store.status)}`}>
-                      {getStatusIcon(store.status)}
+                    <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${getStatusColor(store.status as 'active' | 'pending' | 'rejected')}`}>
+                      {getStatusIcon(store.status as 'active' | 'pending' | 'rejected')}
                       <span className="capitalize">{store.status}</span>
                     </div>
                   </td>
-                  <td className="py-4 px-6">{store.createdAt}</td>
+                  <td className="py-4 px-6">{new Date(store.created_at).toLocaleDateString()}</td>
                   <td className="py-4 px-6">
                     <div className="flex items-center space-x-2">
                       <button className="p-1 hover:bg-secondary-100 rounded text-secondary-600">

@@ -22,16 +22,6 @@ export interface Product {
   pricing?: ProductPricing[];
 }
 
-export interface ProductAttribute {
-  id: string;
-  product_id: string;
-  attribute_type: string;
-  name: string;
-  value: string;
-  unit: string | null;
-  created_at: string;
-}
-
 export interface ProductImage {
   id: string;
   product_id: string;
@@ -54,226 +44,249 @@ export interface ProductPricing {
   updated_at: string;
 }
 
-export function useProducts(options: {
-  includeAttributes?: boolean;
-  includeImages?: boolean;
-  includePricing?: boolean;
-  status?: string;
-  limit?: number;
-} = {}) {
-  const { user } = useAuth();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+interface ProductAttribute {
+  name: string;
+  value: string;
+  unit?: string;
+}
+
+interface ProductData {
+  company_id: string;
+  store_id: string;
+  name: string;
+  brand: string;
+  type: string;
+  model?: string;
+  category: string;
+  description?: string;
+  status: string;
+  images?: File[];
+  documents?: File[];
+  certifications?: string[];
+  standards?: string[];
+  safety_info?: string;
+  mechanical?: ProductAttribute[];
+  physical?: ProductAttribute[];
+  chemical?: ProductAttribute[];
+  electrical?: ProductAttribute[];
+  fuel?: ProductAttribute[];
+  base_price?: number;
+  b2b_price?: number;
+  b2c_price?: number;
+  min_order_quantity?: number;
+  vat_included?: boolean;
+}
+
+export function useProducts() {
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { 
-    includeAttributes = false, 
-    includeImages = false, 
-    includePricing = false,
-    status,
-    limit
-  } = options;
+  const createProduct = async (productData: ProductData) => {
+    setLoading(true);
+    setError(null);
 
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        if (isDemoMode()) {
-          // Use demo data
-          let productsData = [...demoProducts];
-          
-          // Apply status filter if provided
-          if (status) {
-            productsData = productsData.filter(p => p.status === status);
-          }
-          
-          // Apply limit if provided
-          if (limit && limit > 0) {
-            productsData = productsData.slice(0, limit);
-          }
-          
-          // Add related data if requested
-          if (includeAttributes || includeImages || includePricing) {
-            productsData = productsData.map(product => {
-              const enrichedProduct: Product = { ...product };
-              
-              if (includeAttributes) {
-                enrichedProduct.attributes = demoProductAttributes.filter(
-                  attr => attr.product_id === product.id
-                );
-              }
-              
-              if (includeImages) {
-                enrichedProduct.images = demoProductImages.filter(
-                  img => img.product_id === product.id
-                );
-              }
-              
-              if (includePricing) {
-                enrichedProduct.pricing = demoProductPricing.filter(
-                  price => price.product_id === product.id
-                );
-              }
-              
-              return enrichedProduct;
-            });
-          }
-          
-          setProducts(productsData);
-          setLoading(false);
-          return;
-        }
+    try {
+      // 1. Create main product record
+      const { data: product, error: productError } = await supabase
+        .from('products')
+        .insert({
+          company_id: productData.company_id,
+          store_id: productData.store_id,
+          name: productData.name,
+          brand: productData.brand,
+          type: productData.type,
+          model: productData.model,
+          category: productData.category,
+          description: productData.description,
+          status: productData.status
+        })
+        .select()
+        .single();
 
-        if (!user) {
-          setProducts([]);
-          setLoading(false);
-          return;
-        }
+      if (productError) throw productError;
 
-        // Get company ID from user metadata or users table
-        let companyId = user.user_metadata?.company_id;
-        
-        if (!companyId) {
-          // Try to get company ID from users table
-          try {
-            const { data: userData, error: userError } = await supabase
-              .from('users')
-              .select('company_id')
-              .eq('id', user.id)
-              .single();
+      const productId = product.id;
 
-            if (userError) {
-              console.warn(`Error fetching user data: ${userError.message}`);
-              setProducts([]);
-              setLoading(false);
-              return;
-            }
-
-            companyId = userData?.company_id;
-          } catch (e) {
-            console.warn("Error fetching user company data:", e);
-            setProducts([]);
-            setLoading(false);
-            return;
-          }
-          
-          if (!companyId) {
-            setProducts([]);
-            setLoading(false);
-            return;
-          }
-        }
-
-        // Build the query
-        let query = supabase
-          .from('products')
-          .select('*')
-          .eq('company_id', companyId);
-        
-        // Add status filter if provided
-        if (status) {
-          query = query.eq('status', status);
-        }
-        
-        // Add limit if provided
-        if (limit && limit > 0) {
-          query = query.limit(limit);
-        }
-        
-        // Execute the query
-        const { data: productsData, error: productsError } = await query;
-
-        if (productsError) {
-          throw new Error(`Error fetching products: ${productsError.message}`);
-        }
-
-        // Fetch related data if requested
-        let enrichedProducts = [...productsData];
-        
-        if (includeAttributes || includeImages || includePricing) {
-          const productIds = productsData.map(p => p.id);
-          
-          // Fetch attributes if requested
-          let attributes: ProductAttribute[] = [];
-          if (includeAttributes && productIds.length > 0) {
-            const { data: attributesData, error: attributesError } = await supabase
-              .from('product_attributes')
-              .select('*')
-              .in('product_id', productIds);
-            
-            if (attributesError) {
-              throw new Error(`Error fetching product attributes: ${attributesError.message}`);
-            }
-            
-            attributes = attributesData || [];
-          }
-          
-          // Fetch images if requested
-          let images: ProductImage[] = [];
-          if (includeImages && productIds.length > 0) {
-            const { data: imagesData, error: imagesError } = await supabase
-              .from('product_images')
-              .select('*')
-              .in('product_id', productIds);
-            
-            if (imagesError) {
-              throw new Error(`Error fetching product images: ${imagesError.message}`);
-            }
-            
-            images = imagesData || [];
-          }
-          
-          // Fetch pricing if requested
-          let pricing: ProductPricing[] = [];
-          if (includePricing && productIds.length > 0) {
-            const { data: pricingData, error: pricingError } = await supabase
-              .from('product_pricing')
-              .select('*')
-              .in('product_id', productIds);
-            
-            if (pricingError) {
-              throw new Error(`Error fetching product pricing: ${pricingError.message}`);
-            }
-            
-            pricing = pricingData || [];
-          }
-          
-          // Enrich products with related data
-          enrichedProducts = productsData.map(product => {
-            const enrichedProduct: Product = { ...product };
-            
-            if (includeAttributes) {
-              enrichedProduct.attributes = attributes.filter(
-                attr => attr.product_id === product.id
-              );
-            }
-            
-            if (includeImages) {
-              enrichedProduct.images = images.filter(
-                img => img.product_id === product.id
-              );
-            }
-            
-            if (includePricing) {
-              enrichedProduct.pricing = pricing.filter(
-                price => price.product_id === product.id
-              );
-            }
-            
-            return enrichedProduct;
-          });
-        }
-
-        setProducts(enrichedProducts);
-        setLoading(false);
-      } catch (error: any) {
-        console.error('Error in useProducts:', error);
-        setError(error.message);
-        setLoading(false);
+      // 2. Create product attributes if provided
+      const attributePromises = [];
+      
+      // Handle safety information as an attribute
+      if (productData.safety_info) {
+        attributePromises.push(
+          supabase.from('product_attributes').insert({
+            product_id: productId,
+            attribute_type: 'safety',
+            name: 'Safety Information',
+            value: productData.safety_info
+          })
+        );
       }
-    };
 
-    fetchProducts();
-  }, [user, includeAttributes, includeImages, includePricing, status, limit]);
+      // Handle certifications as attributes
+      if (productData.certifications?.length) {
+        attributePromises.push(
+          supabase.from('product_attributes').insert(
+            productData.certifications.map(cert => ({
+              product_id: productId,
+              attribute_type: 'certification',
+              name: 'Certification',
+              value: cert
+            }))
+          )
+        );
+      }
 
-  return { products, loading, error };
+      // Handle standards as attributes
+      if (productData.standards?.length) {
+        attributePromises.push(
+          supabase.from('product_attributes').insert(
+            productData.standards.map(standard => ({
+              product_id: productId,
+              attribute_type: 'standard',
+              name: 'Standard',
+              value: standard
+            }))
+          )
+        );
+      }
+      
+      if (productData.mechanical?.length) {
+        attributePromises.push(
+          supabase.from('product_attributes').insert(
+            productData.mechanical.map(attr => ({
+              product_id: productId,
+              attribute_type: 'mechanical',
+              name: attr.name,
+              value: attr.value,
+              unit: attr.unit
+            }))
+          )
+        );
+      }
+
+      if (productData.physical?.length) {
+        attributePromises.push(
+          supabase.from('product_attributes').insert(
+            productData.physical.map(attr => ({
+              product_id: productId,
+              attribute_type: 'physical',
+              name: attr.name,
+              value: attr.value,
+              unit: attr.unit
+            }))
+          )
+        );
+      }
+
+      if (productData.chemical?.length) {
+        attributePromises.push(
+          supabase.from('product_attributes').insert(
+            productData.chemical.map(attr => ({
+              product_id: productId,
+              attribute_type: 'chemical',
+              name: attr.name,
+              value: attr.value,
+              unit: attr.unit
+            }))
+          )
+        );
+      }
+
+      if (productData.electrical?.length) {
+        attributePromises.push(
+          supabase.from('product_attributes').insert(
+            productData.electrical.map(attr => ({
+              product_id: productId,
+              attribute_type: 'electrical',
+              name: attr.name,
+              value: attr.value,
+              unit: attr.unit
+            }))
+          )
+        );
+      }
+
+      if (productData.fuel?.length) {
+        attributePromises.push(
+          supabase.from('product_attributes').insert(
+            productData.fuel.map(attr => ({
+              product_id: productId,
+              attribute_type: 'fuel',
+              name: attr.name,
+              value: attr.value,
+              unit: attr.unit
+            }))
+          )
+        );
+      }
+
+      // 3. Create pricing record if provided
+      if (productData.base_price !== undefined) {
+        attributePromises.push(
+          supabase.from('product_pricing').insert({
+            product_id: productId,
+            base_price: productData.base_price,
+            b2b_price: productData.b2b_price,
+            b2c_price: productData.b2c_price,
+            min_order_quantity: productData.min_order_quantity,
+            vat_included: productData.vat_included
+          })
+        );
+      }
+
+      // Execute all attribute/pricing/certification inserts
+      if (attributePromises.length > 0) {
+        const results = await Promise.all(attributePromises);
+        const errors = results.filter(result => result.error);
+        if (errors.length > 0) {
+          console.warn('Some product attributes failed to save:', errors);
+        }
+      }
+
+      // TODO: Handle file uploads for images and documents
+      // This would involve uploading to Supabase storage and storing file paths
+
+      return product;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create product';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getProductsByStore = async (storeId: string) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          product_attributes(*),
+          product_pricing(*),
+          product_certifications(*),
+          product_standards(*)
+        `)
+        .eq('store_id', storeId);
+
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch products';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return {
+    createProduct,
+    getProductsByStore,
+    loading,
+    error
+  };
 }
