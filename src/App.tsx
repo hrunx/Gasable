@@ -84,6 +84,7 @@ import IoTIntegrationAddon from './pages/addons/IoTIntegration';
 import FleetManagement from './pages/addons/FleetManagement';
 import EaaSSubscription from './pages/addons/EaaSSubscription';
 import EnergySolutions from './pages/addons/EnergySolutions';
+import ZoneManagement from './pages/ZoneManagement';
 
 function App() {
   const { user, loading, isDemoMode } = useAuth();
@@ -671,6 +672,29 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Zone Management */}
+        <Route
+          path="/zones"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <ZoneManagement />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Simple Routes */}
+        <Route path="/products" element={<ProductManagement />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/analytics/overview" element={<Overview />} />
+        <Route path="/analytics/sales" element={<SalesAnalytics />} />
+        <Route path="/orders" element={<div>Orders page coming soon...</div>} />
+        <Route path="/customers" element={<div>Customers page coming soon...</div>} />
+        <Route path="/inventory" element={<div>Inventory page coming soon...</div>} />
+        <Route path="/addons" element={<AddonsMarketplace />} />
+        <Route path="/campaigns" element={<CampaignsOverview />} />
 
         {/* Catch-all redirect */}
         <Route path="*" element={<Navigate to={user ? "/dashboard" : "/"} />} />

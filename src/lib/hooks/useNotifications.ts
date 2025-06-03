@@ -74,21 +74,13 @@ export function useNotifications() {
       }
 
       // If still not found, try to get from companies table where user is owner
-      const { data: companyData, error: companyError } = await supabase
-        .from('companies')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (companyData?.id) {
-        return companyData.id;
-      }
+      // NOTE: This fallback is removed as companies table no longer has user_id column
+      // Users must be associated via company_members table
 
       console.warn('User not associated with any company', {
         userId: user.id,
         memberError,
-        userError,
-        companyError
+        userError
       });
       return null;
 

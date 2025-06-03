@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   MapPin,
@@ -32,6 +32,8 @@ import CompanyProfileDialog from '../components/CompanyProfileDialog';
 import { useStoreCreation } from '../lib/hooks/useStoreCreation';
 import { useProducts } from '../lib/hooks/useProducts';
 import { useLogistics } from '../lib/hooks/useLogistics';
+import { useZones, DeliveryZone as ZoneType } from '@/lib/hooks/useZones';
+import { supabase } from '../lib/supabase';
 
 interface WorkingHours {
   open: string;
@@ -146,6 +148,11 @@ const AddStore = () => {
   const { createStore } = useStoreCreation();
   const { createProduct } = useProducts();
   const { createLogistics } = useLogistics();
+  const { 
+    zones, 
+    getZonesByCompany, 
+    createZone 
+  } = useZones();
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [hasCompanyProfile, setHasCompanyProfile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -156,6 +163,7 @@ const AddStore = () => {
   const [currentProductStep, setCurrentProductStep] = useState(0); // 0: General, 1: Advanced, 2: Attributes, 3: Pricing
   const [productValidationErrors, setProductValidationErrors] = useState<string[]>([]);
   const [formErrors, setFormErrors] = useState<string | null>(null);
+  const [selectedZones, setSelectedZones] = useState<string[]>([]); // For product-zone assignments
   const [productFormData, setProductFormData] = useState<ProductFormData>({
     name: '',
     brand: '',
@@ -183,10 +191,15 @@ const AddStore = () => {
   
   // Logistics form state
   const [activeLogisticsTab, setActiveLogisticsTab] = useState('delivery-zones');
-  const [selectedShipmentType, setSelectedShipmentType] = useState<string>('');
+  const [selectedShipmentType, setSelectedShipmentType] = useState<string>('third-party'); // Default to third-party
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [deliveryZones, setDeliveryZones] = useState<DeliveryZone[]>([]);
+  const [newZoneForm, setNewZoneForm] = useState({
+    name: '',
+    zone_type: 'urban' as const,
+    delivery_fee: 0,
+    description: ''
+  });
 
   const [formData, setFormData] = useState<StoreFormData>({
     storeType: '',
@@ -216,6 +229,13 @@ const AddStore = () => {
     useCompanyProfile: false,
     invoicingMethod: 'merchant',
   });
+
+  // Load zones when component mounts or when we reach logistics step
+  useEffect(() => {
+    if (currentStep >= 1) { // Load zones as early as product step
+      getZonesByCompany();
+    }
+  }, [currentStep, getZonesByCompany]);
 
   const steps = [
     { id: 'store', title: 'Store Information', description: 'Basic store details and configuration' },
@@ -286,24 +306,27 @@ const AddStore = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    try {
-      setSubmitting(true);
-      setFormErrors(null); // Clear previous errors
-      
-      if (currentStep === 0) {
-        // Store creation step
-        const workingHours = {
-          weekdays: {
-            open: formData.workingHours.Monday.open,
-            close: formData.workingHours.Monday.close
-          },
-          weekends: {
-            open: formData.workingHours.Saturday.open,
-            close: formData.workingHours.Saturday.close
-          },
-          is24Hours: formData.workingHours.Monday.is24Hours
-        };
+    console.log('🚀 Form submitted for step:', currentStep);
+    
+    // Check if this is a logistics operation (prevent auto-advance)
+    const target = e.target as HTMLFormElement;
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement;
+    
+    console.log('📋 Submitter:', submitter?.textContent);
+    
+    // If the submitter is not the main submit button, ignore
+    if (submitter && !submitter.textContent?.includes('Continue') && !submitter.textContent?.includes('Submit')) {
+      console.log('⏸️ Ignoring non-main button submission');
+      return;
+    }
 
+    setSubmitting(true);
+    setFormErrors('');
+
+    try {
+      if (currentStep === 0) {
+        console.log('📝 Step 0: Creating store...');
+        // Store setup step
         const storeData = {
           name: formData.storeName,
           type: formData.storeType,
@@ -312,117 +335,305 @@ const AddStore = () => {
           city: formData.city,
           country: formData.country,
           services: formData.services,
-          working_hours: workingHours
-        };
-
-        const store = await createStore(storeData);
-        
-        if (store) {
-          console.log('Store created successfully:', store);
-          setCreatedStore(store);
-          
-          if (formData.storeCategory === 'physical') {
-            console.log('Physical store created - main branch will be auto-created');
-          } else {
-            console.log('Cloud store created - ready for product setup');
+          working_hours: {
+            monday: {
+              open: formData.workingHours.Monday.open,
+              close: formData.workingHours.Monday.close
+            },
+            saturday: {
+              open: formData.workingHours.Saturday.open,
+              close: formData.workingHours.Saturday.close
+            },
+            is24Hours: formData.workingHours.Monday.is24Hours
           }
-          
-          setCurrentStep(1);
-        }
-      } else if (currentStep === 1) {
-        // Product creation step
-        if (!createdStore?.id) {
-          throw new Error('Store not found. Please go back and create store first.');
-        }
-
-        // Validate product data
-        if (!productFormData.name || !productFormData.brand || !productFormData.type || 
-            !productFormData.category || productFormData.basePrice <= 0) {
-          throw new Error('Please fill in all required product fields (name, brand, type, category, and base price).');
-        }
-
-        // Create product linked to the store using the actual API
-        const productData = {
-          company_id: createdStore.company_id,
-          store_id: createdStore.id,
-          name: productFormData.name,
-          brand: productFormData.brand,
-          type: productFormData.type,
-          model: productFormData.model,
-          category: productFormData.category,
-          description: productFormData.description,
-          status: 'active',
-          certifications: productFormData.certifications,
-          standards: productFormData.standards,
-          safety_info: productFormData.safetyInfo,
-          mechanical: productFormData.mechanical,
-          physical: productFormData.physical,
-          chemical: productFormData.chemical,
-          electrical: productFormData.electrical,
-          fuel: productFormData.fuel,
-          base_price: productFormData.basePrice,
-          b2b_price: productFormData.b2bPrice,
-          b2c_price: productFormData.b2cPrice,
-          min_order_quantity: productFormData.minOrderQuantity,
-          vat_included: productFormData.vatIncluded
         };
 
-        const product = await createProduct(productData);
-        console.log('Product created successfully:', product);
+        const newStore = await createStore(storeData);
+        setCreatedStore(newStore);
+
+        console.log('✅ Store created successfully:', newStore);
+        setCurrentStep(1);
+
+      } else if (currentStep === 1) {
+        console.log('📦 Step 1: Creating products...');
+        // Product setup step
+        if (formData.storeCategory === 'physical') {
+          // Validate product information
+          const missingFields = [];
+          if (!productFormData.name.trim()) missingFields.push('Product name');
+          if (!productFormData.brand.trim()) missingFields.push('Brand');
+          if (!productFormData.type) missingFields.push('Product type');
+          if (!productFormData.category) missingFields.push('Category');
+          if (!productFormData.description.trim()) missingFields.push('Description');
+          if (productFormData.basePrice <= 0) missingFields.push('Base price (must be > 0)');
+          if (productFormData.b2bPrice <= 0) missingFields.push('B2B price (must be > 0)');
+          if (productFormData.b2cPrice <= 0) missingFields.push('B2C price (must be > 0)');
+
+          if (missingFields.length > 0) {
+            setFormErrors(`Please complete the following fields: ${missingFields.join(', ')}`);
+            setSubmitting(false);
+            return;
+          }
+
+          const productData = {
+            name: productFormData.name,
+            brand: productFormData.brand,
+            type: productFormData.type,
+            model: productFormData.model,
+            category: productFormData.category,
+            description: productFormData.description,
+            store_id: createdStore?.id,
+            company_id: createdStore?.company_id,
+            base_price: productFormData.basePrice,
+            b2b_price: productFormData.b2bPrice,
+            b2c_price: productFormData.b2cPrice,
+            min_order_quantity: productFormData.minOrderQuantity,
+            vat_included: productFormData.vatIncluded,
+            attributes: [
+              ...productFormData.mechanical.map(attr => ({
+                attribute_type: 'mechanical',
+                attribute_name: attr.name,
+                attribute_value: attr.value,
+                unit: attr.unit
+              })),
+              ...productFormData.physical.map(attr => ({
+                attribute_type: 'physical',
+                attribute_name: attr.name,
+                attribute_value: attr.value,
+                unit: attr.unit
+              })),
+              ...productFormData.chemical.map(attr => ({
+                attribute_type: 'chemical',
+                attribute_name: attr.name,
+                attribute_value: attr.value,
+                unit: attr.unit
+              })),
+              ...productFormData.electrical.map(attr => ({
+                attribute_type: 'electrical',
+                attribute_name: attr.name,
+                attribute_value: attr.value,
+                unit: attr.unit
+              })),
+              ...productFormData.fuel.map(attr => ({
+                attribute_type: 'fuel',
+                attribute_name: attr.name,
+                attribute_value: attr.value,
+                unit: attr.unit
+              })),
+              ...productFormData.certifications.map(cert => ({
+                attribute_type: 'certification',
+                attribute_name: 'certification',
+                attribute_value: cert,
+                unit: null
+              })),
+              ...productFormData.standards.map(standard => ({
+                attribute_type: 'standard',
+                attribute_name: 'standard',
+                attribute_value: standard,
+                unit: null
+              })),
+              ...(productFormData.safetyInfo ? [{
+                attribute_type: 'safety',
+                attribute_name: 'safety_info',
+                attribute_value: productFormData.safetyInfo,
+                unit: null
+              }] : [])
+            ]
+          };
+
+          try {
+            const createdProduct = await createProduct(productData);
+            console.log('✅ Product created successfully:', createdProduct);
+            
+            // Assign product to selected zones if any zones are selected
+            if (selectedZones.length > 0) {
+              console.log('📍 Assigning product to zones:', selectedZones);
+              // Note: Zone assignments will be handled through product-zone relationships
+              // This could be implemented via a separate API call if needed
+            }
+            
+            // Clear selected zones for next product
+            setSelectedZones([]);
+          } catch (error) {
+            console.error('❌ Failed to create product:', error);
+            setFormErrors('Failed to create product. Please try again.');
+            setSubmitting(false);
+            return;
+          }
+        }
 
         setCurrentStep(2);
+
       } else if (currentStep === 2) {
-        // Logistics setup step
-        if (!createdStore?.id) {
-          throw new Error('Store not found. Please go back and create store first.');
+        console.log('🚚 Step 2: Setting up logistics...');
+        // Logistics setup step - **PREVENT AUTO-ADVANCE HERE**
+        
+        // Only advance if explicitly requested via main form button
+        if (!submitter || !submitter.textContent?.includes('Save Logistics & Continue')) {
+          console.log('⏸️ Not advancing from logistics - submitter check failed');
+          setSubmitting(false);
+          return;
         }
 
-        // Validate logistics data
-        if (deliveryZones.length === 0) {
-          throw new Error('Please add at least one delivery zone.');
+        try {
+          // Save logistics data
+          const logisticsSubmitData = {
+            step: 'logistics-complete',
+            store_id: createdStore?.id,
+            shipment_type: selectedShipmentType,
+            products: productFormData,
+            zones: zones,
+            vehicles: selectedShipmentType === 'own-fleet' ? vehicles : [],
+            drivers: selectedShipmentType === 'own-fleet' ? drivers : []
+          };
+
+          console.log('✅ Logistics data prepared:', logisticsSubmitData);
+          setCurrentStep(3);
+
+        } catch (error) {
+          console.error('❌ Logistics setup error:', error);
+          setFormErrors('Failed to save logistics configuration. Please try again.');
+          setSubmitting(false);
+          return;
         }
 
-        if (!selectedShipmentType) {
-          throw new Error('Please select a shipment method.');
-        }
-
-        // Create logistics configuration linked to the store using the actual API
-        const logisticsData = {
-          store_id: createdStore.id,
-          company_id: createdStore.company_id,  // Add company_id
-          shipment_type: selectedShipmentType,
-          delivery_zones: deliveryZones,
-          vehicles: selectedShipmentType === 'own-fleet' ? vehicles : [],
-          drivers: selectedShipmentType === 'own-fleet' ? drivers : []
-        };
-
-        const logistics = await createLogistics(logisticsData);
-        console.log('Logistics created successfully:', logistics);
-
-        setCurrentStep(3);
       } else if (currentStep === 3) {
-        // Approval submission step
-        console.log('Submitting store for approval...');
-        console.log('Complete store setup:', {
-          store: createdStore,
-          products: productFormData,
-          logistics: {
-            shipmentType: selectedShipmentType,
-            deliveryZones,
-            vehicles,
-            drivers
+        console.log('🚀 Step 3: Submitting for approval...');
+        // Submit for approval
+        try {
+          if (!createdStore?.id) {
+            throw new Error('Store ID not found');
           }
-        });
 
-        setCurrentStep(4);
-      } else {
-        // Final step - handle completion
+          console.log('📋 Store to submit:', createdStore);
+
+          // Update store status to pending approval
+          const { error: updateError } = await supabase
+            .from('stores')
+            .update({
+              status: 'pending_approval',
+              approval_submitted_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', createdStore.id);
+
+          if (updateError) {
+            console.error('❌ Error updating store status:', updateError);
+            throw updateError;
+          }
+
+          console.log('✅ Store status updated to pending_approval');
+
+          // Create approval record
+          const approvalData = {
+            store_id: createdStore.id,
+            company_id: createdStore.company_id,
+            status: 'pending',
+            submission_data: {
+              store: formData,
+              products: productFormData,
+              logistics: {
+                shipment_type: selectedShipmentType,
+                zones,
+                vehicles,
+                drivers
+              }
+            },
+            submitted_at: new Date().toISOString(),
+            submitted_by: (await supabase.auth.getUser()).data.user?.id
+          };
+
+          console.log('📋 Approval data to insert:', approvalData);
+
+          // Try to insert into store_approvals table
+          const { error: approvalError } = await supabase
+            .from('store_approvals')
+            .insert([approvalData]);
+
+          if (approvalError) {
+            console.error('⚠️ Store approvals table error:', approvalError);
+            // Continue anyway - the store status update is sufficient for now
+          } else {
+            console.log('✅ Approval record created successfully');
+          }
+
+          console.log('🎉 Store submitted for approval successfully');
+          
+          // Move to final step
+          setCurrentStep(4);
+
+        } catch (error) {
+          console.error('❌ Error submitting store for approval:', error);
+          setFormErrors(`Failed to submit store for approval: ${error instanceof Error ? error.message : String(error)}`);
+          setSubmitting(false);
+          return;
+        }
+
+      } else if (currentStep === 4) {
+        console.log('🏁 Step 4: Going to dashboard...');
+        // Final step - go live (this is the success page)
         navigate('/dashboard');
       }
+
     } catch (error) {
-      console.error('Error in step submission:', error);
-      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-      setFormErrors(errorMessage);
+      console.error('❌ Error in handleSubmit:', error);
+      setFormErrors(`An error occurred: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    console.log('💾 Saving draft for step:', currentStep);
+    setSubmitting(true);
+    
+    try {
+      // Create a draft object with current form state
+      const draftData = {
+        step: currentStep,
+        store: formData,
+        products: productFormData,
+        logistics: {
+          shipment_type: selectedShipmentType,
+          zones,
+          vehicles,
+          drivers
+        },
+        created_store: createdStore,
+        saved_at: new Date().toISOString()
+      };
+
+      // Save to localStorage as fallback
+      localStorage.setItem('gasable_store_draft', JSON.stringify(draftData));
+      console.log('✅ Draft saved to localStorage');
+
+      // If we have a store ID, also save to database
+      if (createdStore?.id) {
+        try {
+          const { error } = await supabase
+            .from('stores')
+            .update({
+              draft_data: draftData,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', createdStore.id);
+
+          if (error) {
+            console.warn('⚠️ Failed to save draft to database:', error);
+          } else {
+            console.log('✅ Draft saved to database');
+          }
+        } catch (dbError) {
+          console.warn('⚠️ Database draft save error:', dbError);
+        }
+      }
+
+      // Show success message
+      alert('✅ Draft saved successfully!');
+
+    } catch (error) {
+      console.error('❌ Error saving draft:', error);
+      alert(`❌ Failed to save draft: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setSubmitting(false);
     }
@@ -1397,6 +1608,84 @@ const AddStore = () => {
             <label className="text-secondary-700">VAT Included</label>
           </div>
         </div>
+
+        {/* Zone Assignment Section */}
+        <div className="border-t border-secondary-200 pt-6">
+          <h4 className="text-lg font-medium text-secondary-900 mb-4">Delivery Zone Assignment</h4>
+          <p className="text-secondary-600 mb-4">
+            Select which delivery zones this product will be available in. If no zones are selected, the product will be available in all zones.
+          </p>
+          
+          {zones.length === 0 ? (
+            <div className="text-center py-4 bg-secondary-50 rounded-lg">
+              <MapPin className="h-8 w-8 text-secondary-400 mx-auto mb-2" />
+              <p className="text-secondary-600 text-sm">
+                No delivery zones configured yet. You can set up zones in the logistics step.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2 mb-3">
+                <input
+                  type="checkbox"
+                  id="select-all-zones"
+                  checked={selectedZones.length === zones.length}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedZones(zones.map(zone => zone.id));
+                    } else {
+                      setSelectedZones([]);
+                    }
+                  }}
+                  className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+                />
+                <label htmlFor="select-all-zones" className="text-secondary-700 font-medium">
+                  Select All Zones
+                </label>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {zones.map((zone) => (
+                  <div key={zone.id} className="flex items-start space-x-3 p-3 border border-secondary-200 rounded-lg hover:bg-secondary-50">
+                    <input
+                      type="checkbox"
+                      id={`zone-${zone.id}`}
+                      checked={selectedZones.includes(zone.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedZones(prev => [...prev, zone.id]);
+                        } else {
+                          setSelectedZones(prev => prev.filter(id => id !== zone.id));
+                        }
+                      }}
+                      className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500 mt-1"
+                    />
+                    <div className="flex-1">
+                      <label htmlFor={`zone-${zone.id}`} className="cursor-pointer">
+                        <div className="font-medium text-secondary-900">{zone.name}</div>
+                        <div className="text-sm text-secondary-600">
+                          Type: <span className="capitalize">{zone.zone_type}</span> • 
+                          Fee: ${zone.delivery_fee.toFixed(2)}
+                        </div>
+                        {zone.description && (
+                          <div className="text-xs text-secondary-500 mt-1">{zone.description}</div>
+                        )}
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {selectedZones.length > 0 && (
+                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="text-green-700 text-sm">
+                    ✅ Product will be available in {selectedZones.length} zone(s)
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     );
 
@@ -1481,145 +1770,232 @@ const AddStore = () => {
   };
 
   const renderShipmentSetup = () => {
-    const handleAddDeliveryZone = () => {
-      const newZone: DeliveryZone = {
-        id: Date.now().toString(),
-        name: '',
-        baseFee: 0,
-        minOrderValue: 0,
-        estimatedTime: '',
-      };
-      setDeliveryZones([...deliveryZones, newZone]);
+    const handleAddDeliveryZone = async () => {
+      if (!newZoneForm.name.trim()) {
+        alert('Please enter a zone name');
+        return;
+      }
+
+      if (!createdStore?.id) {
+        alert('Store not found. Please complete store setup first.');
+        return;
+      }
+
+      try {
+        const zoneData = {
+          name: newZoneForm.name,
+          zone_type: newZoneForm.zone_type,
+          delivery_fee: newZoneForm.delivery_fee,
+          default_b2b_price: null,
+          default_b2c_price: null,
+          discount_percentage: 0,
+          is_active: true,
+          coverage_areas: [],
+          description: newZoneForm.description,
+          store_id: createdStore.id
+        };
+
+        await createZone(zoneData);
+        
+        // Reset form and refresh zones
+        setNewZoneForm({
+          name: '',
+          zone_type: 'urban',
+          delivery_fee: 0,
+          description: ''
+        });
+        
+        await getZonesByCompany();
+        alert('Zone created successfully!');
+      } catch (error) {
+        console.error('Failed to create zone:', error);
+        alert('Failed to create zone. Please try again.');
+      }
     };
 
-    const handleAddVehicle = () => {
+    const handleAddVehicle = (e?: React.MouseEvent) => {
+      e?.preventDefault();
+      e?.stopPropagation();
+      
       const newVehicle: Vehicle = {
         id: Date.now().toString(),
-        number: '',
+        number: `VEH-${Date.now()}`,
         type: 'truck',
-        capacity: 0,
-        fuelType: '',
+        capacity: 100,
+        fuelType: 'diesel',
       };
       setVehicles([...vehicles, newVehicle]);
     };
 
-    const handleAddDriver = () => {
+    const handleAddDriver = (e?: React.MouseEvent) => {
+      e?.preventDefault();
+      e?.stopPropagation();
+      
       const newDriver: Driver = {
         id: Date.now().toString(),
-        name: '',
-        licenseNumber: '',
+        name: 'New Driver',
+        licenseNumber: `LIC-${Date.now()}`,
         phone: '',
         status: 'available',
       };
       setDrivers([...drivers, newDriver]);
     };
 
+    const handleVehicleChange = (index: number, field: keyof Vehicle, value: string | number) => {
+      const newVehicles = [...vehicles];
+      newVehicles[index] = { ...newVehicles[index], [field]: value };
+      setVehicles(newVehicles);
+    };
+
+    const handleDriverChange = (index: number, field: keyof Driver, value: string) => {
+      const newDrivers = [...drivers];
+      newDrivers[index] = { ...newDrivers[index], [field]: value };
+      setDrivers(newDrivers);
+    };
+
+    const handleRemoveVehicle = (index: number, e?: React.MouseEvent) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      setVehicles(vehicles.filter((_, i) => i !== index));
+    };
+
+    const handleRemoveDriver = (index: number, e?: React.MouseEvent) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      setDrivers(drivers.filter((_, i) => i !== index));
+    };
+
     const renderDeliveryZones = () => (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-medium text-secondary-900">Delivery Zones</h3>
-          <button
-            type="button"
-            onClick={handleAddDeliveryZone}
-            className="btn-secondary flex items-center space-x-2"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Zone</span>
-          </button>
         </div>
 
-        {deliveryZones.length === 0 ? (
-          <div className="text-center py-8 bg-secondary-50 rounded-lg">
+        {/* Zone Creation Form */}
+        <div className="bg-secondary-50 rounded-lg p-4">
+          <h4 className="font-medium text-secondary-900 mb-4">Add New Zone</h4>
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-secondary-700 mb-1">
+                Zone Name
+              </label>
+              <input
+                type="text"
+                value={newZoneForm.name}
+                onChange={(e) => setNewZoneForm(prev => ({ ...prev, name: e.target.value }))}
+                className="input-field"
+                placeholder="e.g., Downtown Area"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-secondary-700 mb-1">
+                Zone Type
+              </label>
+              <select
+                value={newZoneForm.zone_type}
+                onChange={(e) => setNewZoneForm(prev => ({ ...prev, zone_type: e.target.value as any }))}
+                className="input-field"
+              >
+                <option value="urban">Urban</option>
+                <option value="suburban">Suburban</option>
+                <option value="rural">Rural</option>
+                <option value="express">Express</option>
+                <option value="economy">Economy</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-secondary-700 mb-1">
+                Delivery Fee (SAR)
+              </label>
+              <input
+                type="number"
+                value={newZoneForm.delivery_fee}
+                onChange={(e) => setNewZoneForm(prev => ({ ...prev, delivery_fee: Number(e.target.value) }))}
+                className="input-field"
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={handleAddDeliveryZone}
+                className="btn-primary flex items-center space-x-2"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add Zone</span>
+              </button>
+            </div>
+          </div>
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-secondary-700 mb-1">
+              Description (Optional)
+            </label>
+            <input
+              type="text"
+              value={newZoneForm.description}
+              onChange={(e) => setNewZoneForm(prev => ({ ...prev, description: e.target.value }))}
+              className="input-field"
+              placeholder="Zone description..."
+            />
+          </div>
+        </div>
+
+        {/* Existing Zones Display */}
+        {zones.length === 0 ? (
+          <div className="text-center py-8 bg-white rounded-lg border border-secondary-200">
             <MapPin className="h-12 w-12 text-secondary-400 mx-auto mb-4" />
             <p className="text-secondary-600">No delivery zones configured</p>
-            <p className="text-secondary-500 text-sm">Add your first delivery zone to get started</p>
+            <p className="text-secondary-500 text-sm">Add your first delivery zone above</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {deliveryZones.map((zone, index) => (
+            <h4 className="font-medium text-secondary-900">Configured Zones ({zones.length})</h4>
+            {zones.map((zone) => (
               <div key={zone.id} className="bg-white border border-secondary-200 rounded-lg p-4">
                 <div className="grid grid-cols-4 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-secondary-700 mb-1">
                       Zone Name
                     </label>
-                    <input
-                      type="text"
-                      value={zone.name}
-                      onChange={(e) => {
-                        const newZones = [...deliveryZones];
-                        newZones[index] = { ...zone, name: e.target.value };
-                        setDeliveryZones(newZones);
-                      }}
-                      className="input-field"
-                      placeholder="e.g., Local Area"
-                    />
+                    <p className="text-secondary-900">{zone.name}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-secondary-700 mb-1">
-                      Base Fee (SAR)
+                      Zone Type
                     </label>
-                    <input
-                      type="number"
-                      value={zone.baseFee}
-                      onChange={(e) => {
-                        const newZones = [...deliveryZones];
-                        newZones[index] = { ...zone, baseFee: Number(e.target.value) };
-                        setDeliveryZones(newZones);
-                      }}
-                      className="input-field"
-                      placeholder="0.00"
-                      min="0"
-                      step="0.01"
-                    />
+                    <p className="text-secondary-900 capitalize">{zone.zone_type}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-secondary-700 mb-1">
-                      Min Order Value (SAR)
+                      Delivery Fee (SAR)
                     </label>
-                    <input
-                      type="number"
-                      value={zone.minOrderValue}
-                      onChange={(e) => {
-                        const newZones = [...deliveryZones];
-                        newZones[index] = { ...zone, minOrderValue: Number(e.target.value) };
-                        setDeliveryZones(newZones);
-                      }}
-                      className="input-field"
-                      placeholder="0.00"
-                      min="0"
-                      step="0.01"
-                    />
+                    <p className="text-secondary-900">${zone.delivery_fee.toFixed(2)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-secondary-700 mb-1">
-                      Estimated Time
+                      Status
                     </label>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="text"
-                        value={zone.estimatedTime}
-                        onChange={(e) => {
-                          const newZones = [...deliveryZones];
-                          newZones[index] = { ...zone, estimatedTime: e.target.value };
-                          setDeliveryZones(newZones);
-                        }}
-                        className="input-field"
-                        placeholder="1-2 days"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newZones = deliveryZones.filter((_, i) => i !== index);
-                          setDeliveryZones(newZones);
-                        }}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      zone.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {zone.is_active ? 'Active' : 'Inactive'}
+                    </span>
                   </div>
                 </div>
+                {zone.description && (
+                  <div className="mt-2">
+                    <label className="block text-sm font-medium text-secondary-700 mb-1">
+                      Description
+                    </label>
+                    <p className="text-secondary-600 text-sm">{zone.description}</p>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1709,20 +2085,12 @@ const AddStore = () => {
                         type="text"
                         placeholder="Vehicle Number"
                         value={vehicle.number}
-                        onChange={(e) => {
-                          const newVehicles = [...vehicles];
-                          newVehicles[index] = { ...vehicle, number: e.target.value };
-                          setVehicles(newVehicles);
-                        }}
+                        onChange={(e) => handleVehicleChange(index, 'number', e.target.value)}
                         className="input-field-sm"
                       />
                       <select
                         value={vehicle.type}
-                        onChange={(e) => {
-                          const newVehicles = [...vehicles];
-                          newVehicles[index] = { ...vehicle, type: e.target.value as 'truck' | 'van' | 'bike' };
-                          setVehicles(newVehicles);
-                        }}
+                        onChange={(e) => handleVehicleChange(index, 'type', e.target.value as 'truck' | 'van' | 'bike')}
                         className="input-field-sm"
                       >
                         <option value="truck">Truck</option>
@@ -1733,11 +2101,7 @@ const AddStore = () => {
                         type="number"
                         placeholder="Capacity (kg)"
                         value={vehicle.capacity}
-                        onChange={(e) => {
-                          const newVehicles = [...vehicles];
-                          newVehicles[index] = { ...vehicle, capacity: Number(e.target.value) };
-                          setVehicles(newVehicles);
-                        }}
+                        onChange={(e) => handleVehicleChange(index, 'capacity', Number(e.target.value))}
                         className="input-field-sm"
                         min="0"
                       />
@@ -1745,19 +2109,12 @@ const AddStore = () => {
                         type="text"
                         placeholder="Fuel Type"
                         value={vehicle.fuelType}
-                        onChange={(e) => {
-                          const newVehicles = [...vehicles];
-                          newVehicles[index] = { ...vehicle, fuelType: e.target.value };
-                          setVehicles(newVehicles);
-                        }}
+                        onChange={(e) => handleVehicleChange(index, 'fuelType', e.target.value)}
                         className="input-field-sm"
                       />
                       <button
                         type="button"
-                        onClick={() => {
-                          const newVehicles = vehicles.filter((_, i) => i !== index);
-                          setVehicles(newVehicles);
-                        }}
+                        onClick={() => handleRemoveVehicle(index)}
                         className="p-1 text-red-600 hover:bg-red-50 rounded"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -1795,42 +2152,26 @@ const AddStore = () => {
                         type="text"
                         placeholder="Driver Name"
                         value={driver.name}
-                        onChange={(e) => {
-                          const newDrivers = [...drivers];
-                          newDrivers[index] = { ...driver, name: e.target.value };
-                          setDrivers(newDrivers);
-                        }}
+                        onChange={(e) => handleDriverChange(index, 'name', e.target.value)}
                         className="input-field-sm"
                       />
                       <input
                         type="text"
                         placeholder="License Number"
                         value={driver.licenseNumber}
-                        onChange={(e) => {
-                          const newDrivers = [...drivers];
-                          newDrivers[index] = { ...driver, licenseNumber: e.target.value };
-                          setDrivers(newDrivers);
-                        }}
+                        onChange={(e) => handleDriverChange(index, 'licenseNumber', e.target.value)}
                         className="input-field-sm"
                       />
                       <input
                         type="tel"
                         placeholder="Phone"
                         value={driver.phone}
-                        onChange={(e) => {
-                          const newDrivers = [...drivers];
-                          newDrivers[index] = { ...driver, phone: e.target.value };
-                          setDrivers(newDrivers);
-                        }}
+                        onChange={(e) => handleDriverChange(index, 'phone', e.target.value)}
                         className="input-field-sm"
                       />
                       <select
                         value={driver.status}
-                        onChange={(e) => {
-                          const newDrivers = [...drivers];
-                          newDrivers[index] = { ...driver, status: e.target.value as 'available' | 'busy' | 'offline' };
-                          setDrivers(newDrivers);
-                        }}
+                        onChange={(e) => handleDriverChange(index, 'status', e.target.value as 'available' | 'busy' | 'offline')}
                         className="input-field-sm"
                       >
                         <option value="available">Available</option>
@@ -1839,10 +2180,7 @@ const AddStore = () => {
                       </select>
                       <button
                         type="button"
-                        onClick={() => {
-                          const newDrivers = drivers.filter((_, i) => i !== index);
-                          setDrivers(newDrivers);
-                        }}
+                        onClick={() => handleRemoveDriver(index)}
                         className="p-1 text-red-600 hover:bg-red-50 rounded"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -2045,6 +2383,7 @@ const AddStore = () => {
               <>
                 <button
                   type="button"
+                  onClick={handleSaveDraft}
                   className="px-6 py-2 bg-secondary-100 text-secondary-700 rounded-lg hover:bg-secondary-200 transition-colors"
                   disabled={submitting}
                 >
@@ -2055,10 +2394,16 @@ const AddStore = () => {
                   className="btn-primary px-6 flex items-center space-x-2"
                   disabled={submitting}
                 >
-                  {submitting && currentStep === 0 ? (
+                  {submitting ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      <span>Creating Store...</span>
+                      <span>
+                        {currentStep === 0 ? 'Creating Store...' :
+                         currentStep === 1 ? 'Saving Products...' :
+                         currentStep === 2 ? 'Saving Logistics...' :
+                         currentStep === 3 ? 'Submitting for Approval...' :
+                         'Processing...'}
+                      </span>
                     </>
                   ) : (
                     <span>

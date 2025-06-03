@@ -303,13 +303,29 @@ export function useSubscription() {
       const newTier = plan.name.toLowerCase();
 
       // Update company subscription tier
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // First, get company_id from company_members table using profile_id
+      const { data: memberData } = await supabase
+        .from('company_members')
+        .select('company_id')
+        .eq('profile_id', user.id)
+        .single();
+
+      if (!memberData?.company_id) {
+        throw new Error('No company found for user');
+      }
+
       const { error } = await supabase
         .from('companies')
         .update({ 
           subscription_tier: newTier,
           subscription_status: 'active'
         })
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id);
+        .eq('id', memberData.company_id);
 
       if (error) throw error;
 
@@ -330,13 +346,29 @@ export function useSubscription() {
     try {
       setError(null);
 
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // First, get company_id from company_members table using profile_id
+      const { data: memberData } = await supabase
+        .from('company_members')
+        .select('company_id')
+        .eq('profile_id', user.id)
+        .single();
+
+      if (!memberData?.company_id) {
+        throw new Error('No company found for user');
+      }
+
       const { error } = await supabase
         .from('companies')
         .update({ 
           subscription_tier: 'free',
           subscription_status: 'cancelled'
         })
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id);
+        .eq('id', memberData.company_id);
 
       if (error) throw error;
 

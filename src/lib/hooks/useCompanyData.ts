@@ -67,10 +67,21 @@ export const useCompanyData = () => {
       if (fetchError && fetchError.message?.includes('function get_user_company_data() does not exist')) {
         console.log('⚠️ Using fallback method - please run the database migration');
         
+        // First, try to get company_id from company_members table using profile_id
+        const { data: memberData } = await supabase
+          .from('company_members')
+          .select('company_id')
+          .eq('profile_id', user.id)
+          .single();
+
+        if (!memberData?.company_id) {
+          throw new Error('No company found for user');
+        }
+
         const { data: companyData, error: companyError } = await supabase
           .from('companies')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('id', memberData.company_id)
           .single();
 
         console.log('🏢 Company data:', { companyData, error: companyError });
@@ -187,10 +198,21 @@ export const useCompanyData = () => {
         if (Object.keys(companyUpdates).length > 0) {
           companyUpdates.updated_at = new Date().toISOString();
           
+          // First, get company_id from company_members table using profile_id
+          const { data: memberData } = await supabase
+            .from('company_members')
+            .select('company_id')
+            .eq('profile_id', user.id)
+            .single();
+
+          if (!memberData?.company_id) {
+            throw new Error('No company found for user');
+          }
+          
           const { error: companyError } = await supabase
             .from('companies')
             .update(companyUpdates)
-            .eq('user_id', user.id);
+            .eq('id', memberData.company_id);
 
           console.log('🏢 Company update result:', { error: companyError });
 
